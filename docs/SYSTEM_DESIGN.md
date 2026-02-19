@@ -69,16 +69,18 @@ Here is the list of functional requirements for the Soegih application. Some API
 - type: expense | income
 - created_at: timestamp
 - updated_at: timestamp
+- deleted_at: timestamp? (null if not deleted)
 
 ### D.2. WALLET
 
 - id: string
 - name: string
 - type: cash | bank | e-wallet | other
-- balance_idr: integer (derived from sum of postings)
+- balance: integer (derived from sum of postings)
 - currency: string (default: IDR)
 - created_at: timestamp
 - updated_at: timestamp
+- deleted_at: timestamp? (null if not deleted)
 
 ### D.3. TRANSACTION_EVENT
 
@@ -90,14 +92,16 @@ Here is the list of functional requirements for the Soegih application. Some API
 - category_id: string? (FK to CATEGORY.id, null for transfer type)
 - created_at: timestamp
 - updated_at: timestamp
+- deleted_at: timestamp? (null if not deleted)
 
 ### D.4. POSTING
 
 - id: string
 - event_id: string (FK to TRANSACTION_EVENT.id)
 - wallet_id: string (FK to WALLET.id)
-- amount_idr: integer (positive for debit, negative for credit)
+- amount: integer (positive for debit, negative for credit)
 - created_at: timestamp
+- deleted_at: timestamp? (null if not deleted)
 
 ### D.5. Transaction & Posting Relationships
 
@@ -120,6 +124,7 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 #### Transfer Mechanics
 
 **Transfer Process**:
+
 1. User initiates transfer: from wallet A (source) to wallet B (destination), amount X
 2. System creates a `TRANSACTION_EVENT` with:
    - type: `transfer`
@@ -131,14 +136,95 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 4. Both postings must succeed or the entire transaction is rolled back (database transaction)
 
 **Key Points**:
+
 - Income/Expense transactions have exactly 1 posting
 - Transfer transactions have exactly 2 postings
 - Transfers have no category_id (they don't categorize spending, just move money)
 - The amount must be identical in both postings for transfers (equal debit/credit)
 - Transfer transactions maintain double-entry bookkeeping principles
-- Wallet balance is calculated as: SUM(amount_idr) of all postings where wallet_id = wallet.id
+- Wallet balance is calculated as: SUM(amount) of all postings where wallet_id = wallet.id
 
-## E. API Design
+## E. Data Constraints & Business Rules
+
+### E.1. Wallet Constraints
+
+- Wallet balance can go negative (allowed)
+- Wallet name must be unique per user (when user authentication is added)
+- Wallet type is editable (metadata, not transactional data)
+- When deleted, wallet name is appended with "[ARCHIVED <unix timestamp>]" suffix (soft delete used, see E.4)
+  - Example: "My Cash" → "My Cash [ARCHIVED 1708425600]"
+  - This prevents name reuse and makes deleted wallets identifiable in queries
+
+### E.2. Category Constraints
+
+- Category name must be unique globally (no user isolation in MVP, will adjust in next phase)
+- Category type is editable (metadata, not transactional data)
+- When deleted, category name is appended with "[ARCHIVED <unix timestamp>]" suffix (soft delete used, see E.4)
+  - Example: "Groceries" → "Groceries [ARCHIVED 1708425600]"
+  - This prevents name reuse and makes deleted categories identifiable in queries
+
+### E.3. Transaction Constraints
+
+- Transaction type cannot be changed after creation (immutable property)
+- Transaction can be edited: amount, note, payee, category, wallet (except type)
+- Changing wallet in a transaction updates the associated posting's wallet_id
+- Transfer transactions must have exactly 2 postings with equal and opposite amounts
+- Transfer cannot be edited (delete and recreate required)
+- Transfers cannot be reversed without creating a new transfer transaction
+
+### E.4. Soft Delete vs Hard Delete Strategy
+
+#### Context: Personal Finance App
+
+In a personal finance application, historical data is critical for:
+
+- Accurate balance calculations (wallet balance = sum of all postings)
+- Tax/audit trails
+- Financial reporting and analytics
+- User trust (they never lose their data)
+
+#### Trade-offs Analysis
+
+| Aspect                  | Soft Delete                                              | Hard Delete                                             |
+| ----------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| **Balance Calculation** | ✅ Accurate: Deleted postings still count in balance sum | ❌ Wrong: Deleting postings changes historical balances |
+| **Audit Trail**         | ✅ Full history preserved                                | ❌ Data loss, no audit trail                            |
+| **Tax/Compliance**      | ✅ Safe: Can reproduce historical reports                | ❌ Risky: Cannot reproduce reports                      |
+| **Storage**             | ❌ More storage (keeps deleted records)                  | ✅ Efficient: Removes deleted records                   |
+| **Query Performance**   | ⚠️ Moderate: Must filter `deleted_at IS NULL`            | ✅ Fast: Only query live records                        |
+| **Undo/Recovery**       | ✅ Can restore deleted items                             | ❌ Permanent loss                                       |
+| **User Experience**     | ✅ Users feel safe deleting                              | ❌ Users fear deleting                                  |
+
+#### Chosen Strategy: Soft Delete
+
+**Soft Delete Applied to:**
+
+- POSTING records (financial ledger - must never be lost)
+- TRANSACTION_EVENT records (parent of postings - must be recoverable)
+- WALLET records (deleting wallet invalidates historical reports)
+- CATEGORY records (deleting category breaks transaction history)
+
+**Implementation:**
+
+Add `deleted_at: timestamp?` field to all entities. When deleted:
+1. Set `deleted_at` to current timestamp (unix timestamp)
+2. Append entity name with "[ARCHIVED <unix timestamp>]" suffix
+   - For WALLET: Update `name` field
+   - For CATEGORY: Update `name` field
+   - For TRANSACTION_EVENT & POSTING: No name field to update
+
+**Implications:**
+
+- All queries must include `WHERE deleted_at IS NULL` filter
+- Wallet balance calculation includes all postings (deleted or not)
+- Deleted names remain visible for audit/reference purposes
+- Prevents name reuse (uniqueness constraint still applies to updated names)
+- Users can restore deleted items within a retention period (e.g., 30 days)
+- After retention period, implement archive job to permanently delete
+
+---
+
+## F. API Design
 
 ### E.1. Category API
 
