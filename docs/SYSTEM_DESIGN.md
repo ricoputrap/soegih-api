@@ -4,6 +4,13 @@
 
 Soegih API is a backend service that provides a set of APIs for managing and interacting with various resources in Soegih, an application that allows users to manage their personal finances.
 
+### A.1. Technology Stack
+
+- **Framework**: NestJS (Node.js)
+- **Language**: TypeScript
+- **Database**: (To be specified)
+- **API Style**: RESTful JSON APIs
+
 ## B. Functional Requirements
 
 Here is the list of functional requirements for the Soegih application. Some API endpoints should be designed to support these requirements.
@@ -68,6 +75,8 @@ Here is the list of functional requirements for the Soegih application. Some API
 - id: string
 - name: string
 - type: cash | bank | e-wallet | other
+- balance_idr: integer (derived from sum of postings)
+- currency: string (default: IDR)
 - created_at: timestamp
 - updated_at: timestamp
 
@@ -75,20 +84,59 @@ Here is the list of functional requirements for the Soegih application. Some API
 
 - id: string
 - occurred_at: timestamp
-- type: expense | income
+- type: expense | income | transfer
 - note: string?
 - payee: string?
-- category_id: string (FK to CATEGORY.id)
+- category_id: string? (FK to CATEGORY.id, null for transfer type)
 - created_at: timestamp
 - updated_at: timestamp
 
-### D.4. Posting
+### D.4. POSTING
 
 - id: string
 - event_id: string (FK to TRANSACTION_EVENT.id)
 - wallet_id: string (FK to WALLET.id)
-- amount_idr: integer
+- amount_idr: integer (positive for debit, negative for credit)
 - created_at: timestamp
+
+### D.5. Transaction & Posting Relationships
+
+#### How Postings Relate to Events
+
+A `TRANSACTION_EVENT` always has at least one `Posting` record:
+
+1. **Income/Expense Transactions**: Single posting
+   - Example: Income event with 1 posting to wallet A (+1,000,000 IDR)
+   - Example: Expense event with 1 posting from wallet A (-500,000 IDR)
+   - Each event is tied to exactly one wallet
+
+2. **Transfer Transactions**: Multiple postings (exactly 2)
+   - Example: Transfer from wallet A to wallet B
+     - Event type: `transfer`, category_id: null
+     - Posting 1: wallet A, amount: -1,000,000 IDR (debit from source)
+     - Posting 2: wallet B, amount: +1,000,000 IDR (credit to destination)
+   - This ensures atomic transfers: both postings must succeed or both fail
+
+#### Transfer Mechanics
+
+**Transfer Process**:
+1. User initiates transfer: from wallet A (source) to wallet B (destination), amount X
+2. System creates a `TRANSACTION_EVENT` with:
+   - type: `transfer`
+   - category_id: null
+   - occurred_at: current timestamp
+3. System creates two `Posting` records atomically:
+   - Posting 1: event_id, wallet_id (A), amount: -X (debit from source)
+   - Posting 2: event_id, wallet_id (B), amount: +X (credit to destination)
+4. Both postings must succeed or the entire transaction is rolled back (database transaction)
+
+**Key Points**:
+- Income/Expense transactions have exactly 1 posting
+- Transfer transactions have exactly 2 postings
+- Transfers have no category_id (they don't categorize spending, just move money)
+- The amount must be identical in both postings for transfers (equal debit/credit)
+- Transfer transactions maintain double-entry bookkeeping principles
+- Wallet balance is calculated as: SUM(amount_idr) of all postings where wallet_id = wallet.id
 
 ## E. API Design
 
