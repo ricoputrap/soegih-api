@@ -207,6 +207,7 @@ In a personal finance application, historical data is critical for:
 **Implementation:**
 
 Add `deleted_at: timestamp?` field to all entities. When deleted:
+
 1. Set `deleted_at` to current timestamp (unix timestamp)
 2. Append entity name with "[ARCHIVED <unix timestamp>]" suffix
    - For WALLET: Update `name` field
@@ -224,7 +225,267 @@ Add `deleted_at: timestamp?` field to all entities. When deleted:
 
 ---
 
-## F. API Design
+## F. Error Handling & Validation
+
+### F.1. Validation Rules
+
+#### F.1.1. Wallet Validation
+
+- **name**: Required, max 100 characters, unique per user
+- **type**: Required, must be one of: `cash | bank | e-wallet | other`
+- **currency**: Optional, must be a valid ISO 4217 code (default: IDR)
+
+#### F.1.2. Category Validation
+
+- **name**: Required, max 100 characters, unique globally
+- **type**: Required, must be one of: `expense | income`
+- **description**: Optional, max 500 characters
+
+#### F.1.3. Transaction Event Validation
+
+- **type**: Required, immutable, must be one of: `expense | income | transfer`
+- **occurred_at**: Required, must not be in the future (or within tolerance, e.g., ±5 minutes)
+- **amount**: Required, must be positive integer > 0
+- **wallet_id**: Required, wallet must exist and not be deleted
+- **category_id**: Required for `expense | income`, must be null for `transfer`
+- **note**: Optional, max 500 characters
+- **payee**: Optional, max 100 characters (relevant for income/expense)
+
+#### F.1.4. Posting Validation
+
+- **event_id**: Required, event must exist and not be deleted
+- **wallet_id**: Required, wallet must exist and not be deleted
+- **amount**: Required, integer (positive or negative), must not be zero
+- Transfer transactions must have exactly 2 postings with equal and opposite amounts
+
+#### F.1.5. Business Logic Validation
+
+- When deleting a wallet/category with existing postings/transactions: soft delete with name archival
+- When editing a transaction's wallet: the posting's wallet_id must be updated
+- When editing a transaction: type cannot change
+- When creating a transfer: source and destination wallets must be different
+
+### F.2. Error Response Format
+
+All API errors will follow a standard error response format:
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": {
+      "field": "field_name",
+      "reason": "Specific validation reason"
+    }
+  },
+  "timestamp": 1708425600,
+  "path": "/api/v1/wallets"
+}
+```
+
+### F.3. HTTP Status Codes & Error Categories
+
+| Status  | Code                      | Scenario                                                                 |
+| ------- | ------------------------- | ------------------------------------------------------------------------ |
+| **400** | `VALIDATION_ERROR`        | Invalid input (missing required field, format invalid)                   |
+| **400** | `BUSINESS_RULE_VIOLATION` | Violates business logic (e.g., transfer to same wallet, negative amount) |
+| **404** | `NOT_FOUND`               | Resource does not exist or is deleted                                    |
+| **409** | `CONFLICT`                | Duplicate name, immutable field change attempt                           |
+| **422** | `UNPROCESSABLE_ENTITY`    | Logical inconsistency (e.g., orphaned posting)                           |
+| **500** | `INTERNAL_SERVER_ERROR`   | Unexpected server error                                                  |
+
+### F.4. Common Error Codes
+
+| Code                      | Meaning                              | Example                                              |
+| ------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| `WALLET_NOT_FOUND`        | Wallet doesn't exist                 | Wallet ID in posting doesn't match any wallet        |
+| `CATEGORY_NOT_FOUND`      | Category doesn't exist               | Category ID in transaction doesn't match             |
+| `TRANSACTION_NOT_FOUND`   | Transaction doesn't exist            | Trying to update non-existent transaction            |
+| `DUPLICATE_WALLET_NAME`   | Wallet name already exists           | Creating wallet with existing name                   |
+| `DUPLICATE_CATEGORY_NAME` | Category name already exists         | Creating category with existing name                 |
+| `IMMUTABLE_FIELD_CHANGE`  | Attempting to change immutable field | Changing transaction type from `expense` to `income` |
+| `INVALID_TRANSFER`        | Transfer validation failed           | Source and destination wallets are the same          |
+| `INVALID_POSTING_COUNT`   | Posting count mismatch               | Transfer with only 1 posting                         |
+| `AMOUNT_MISMATCH`         | Posting amounts don't balance        | Transfer with unequal debit/credit amounts           |
+
+---
+
+## G. API Response Format
+
+### G.1. Success Response Format
+
+All successful API responses follow this standard format:
+
+```json
+{
+  "data": {
+    "id": "resource_id",
+    "name": "resource_name",
+    ...other fields...
+  },
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+**For list endpoints with pagination:**
+
+```json
+{
+  "data": [
+    { "id": "1", "name": "Item 1" },
+    { "id": "2", "name": "Item 2" }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 42,
+    "has_next": true,
+    "has_previous": false
+  },
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+### G.2. Pagination Strategy
+
+**Chosen: Offset-based pagination** (limit + offset)
+
+#### Rationale & Trade-offs
+
+| Aspect             | Offset-based                          | Cursor-based                         |
+| ------------------ | ------------------------------------- | ------------------------------------ |
+| **Implementation** | ✅ Simple: Skip N rows, take M        | ⚠️ Complex: Requires cursor encoding |
+| **Performance**    | ⚠️ Slower on large offsets            | ✅ Consistent O(1) performance       |
+| **Offset Jump**    | ✅ Can jump to any page               | ❌ Must traverse sequentially        |
+| **Data Stability** | ❌ Affected by inserts/deletes        | ✅ Stable with concurrent changes    |
+| **Use Case Fit**   | ✅ Best for small datasets (<100k)    | ✅ Best for large datasets (>1M)     |
+| **URL Simplicity** | ✅ Simple: `?limit=10&offset=20`      | ❌ Complex: `?limit=10&cursor=...`   |
+| **Client UX**      | ✅ Page numbers easy (P=offset/limit) | ⚠️ "Next/Prev" only, no page numbers |
+
+**Recommendation for Soegih (MVP):**
+
+- **Use offset-based pagination** (limit + offset)
+- Rationale: MVP with small user base (<100 concurrent users), small transaction counts per wallet, simple implementation
+- Future: Can migrate to cursor-based if needed for scalability
+
+### G.3. Pagination Parameters
+
+**Query Parameters:**
+
+- `limit`: Number of items per page (default: 10, max: 100)
+- `offset`: Number of items to skip (default: 0)
+
+**Response Fields:**
+
+- `pagination.total`: Total count of items matching filters
+- `pagination.has_next`: Boolean indicating if more items exist
+- `pagination.has_previous`: Boolean indicating if previous items exist
+
+### G.4. Sorting & Filtering Parameters
+
+**Sorting:**
+
+- Parameter: `sort` (default: creation order)
+- Format: `sort=field:asc` or `sort=field:desc`
+- Multiple sorts: `sort=field1:asc,field2:desc`
+- Example: `GET /wallets?sort=name:asc,balance:desc`
+
+**Filtering:**
+
+- Use query parameters matching field names
+- Example: `GET /transactions?type=expense&wallet_id=w123`
+- Date ranges: `occurred_at_gte` and `occurred_at_lte` for range queries
+- Search: `search=term` for text-based search (searches name, note, payee fields)
+
+### G.5. Field Selection (Response Body Optimization)
+
+**Optional: Implement field projection**
+
+- Parameter: `fields=id,name,balance` (comma-separated)
+- Returns only specified fields to reduce payload
+- Useful for mobile/bandwidth-constrained clients
+- Default: Return all non-sensitive fields
+
+### G.6. Response Examples
+
+**Get Single Wallet (Success):**
+
+```json
+{
+  "data": {
+    "id": "w123",
+    "name": "My Cash",
+    "type": "cash",
+    "balance": 500000,
+    "currency": "IDR",
+    "created_at": 1708425600,
+    "updated_at": 1708425600
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
+
+**Get All Transactions (Success with Pagination):**
+
+```json
+{
+  "data": [
+    {
+      "id": "t1",
+      "type": "expense",
+      "amount": 50000,
+      "occurred_at": 1708425600,
+      "category": { "id": "c1", "name": "Groceries" },
+      "wallet": { "id": "w1", "name": "My Cash" },
+      "note": "Weekly shopping",
+      "created_at": 1708425600,
+      "updated_at": 1708425600
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 150,
+    "has_next": true,
+    "has_previous": false
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
+
+**Error Response:**
+
+```json
+{
+  "error": {
+    "code": "DUPLICATE_WALLET_NAME",
+    "message": "Wallet with name 'My Cash' already exists",
+    "details": {
+      "field": "name",
+      "reason": "Name must be unique per user"
+    }
+  },
+  "timestamp": 1708425610,
+  "path": "/api/v1/wallets"
+}
+```
+
+---
+
+## H. API Design
 
 ### E.1. Category API
 
