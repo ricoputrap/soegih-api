@@ -8,7 +8,7 @@ Soegih API is a backend service that provides a set of APIs for managing and int
 
 - **Framework**: NestJS (Node.js)
 - **Language**: TypeScript
-- **Database**: (To be specified)
+- **Database**: Supabase
 - **API Style**: RESTful JSON APIs
 
 ## B. Functional Requirements
@@ -151,17 +151,23 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 - Wallet balance can go negative (allowed)
 - Wallet name must be unique per user (when user authentication is added)
 - Wallet type is editable (metadata, not transactional data)
-- When deleted, wallet name is appended with "[ARCHIVED <unix timestamp>]" suffix (soft delete used, see E.4)
-  - Example: "My Cash" → "My Cash [ARCHIVED 1708425600]"
-  - This prevents name reuse and makes deleted wallets identifiable in queries
+- **Deletion Rules**:
+  - Wallet can be deleted even if it has existing transactions (soft delete preserves data)
+  - Deletion updates wallet name by appending "[ARCHIVED <unix timestamp>]" suffix (see E.4)
+    - Example: "My Cash" → "My Cash [ARCHIVED 1708425600]"
+  - If wallet is used in existing transactions, the delete API should return a warning flag to prompt user confirmation before actual deletion
+  - This prevents accidental deletion while maintaining data integrity through soft delete
 
 ### E.2. Category Constraints
 
 - Category name must be unique globally (no user isolation in MVP, will adjust in next phase)
 - Category type is editable (metadata, not transactional data)
-- When deleted, category name is appended with "[ARCHIVED <unix timestamp>]" suffix (soft delete used, see E.4)
-  - Example: "Groceries" → "Groceries [ARCHIVED 1708425600]"
-  - This prevents name reuse and makes deleted categories identifiable in queries
+- **Deletion Rules**:
+  - Category can be deleted even if it has existing transactions (soft delete preserves data)
+  - Deletion updates category name by appending "[ARCHIVED <unix timestamp>]" suffix (see E.4)
+    - Example: "Groceries" → "Groceries [ARCHIVED 1708425600]"
+  - If category is used in existing transactions, the delete API should return a warning flag to prompt user confirmation before actual deletion
+  - This prevents accidental deletion while maintaining data integrity through soft delete
 
 ### E.3. Transaction Constraints
 
@@ -222,6 +228,109 @@ Add `deleted_at: timestamp?` field to all entities. When deleted:
 - Prevents name reuse (uniqueness constraint still applies to updated names)
 - Users can restore deleted items within a retention period (e.g., 30 days)
 - After retention period, implement archive job to permanently delete
+
+### E.5. Deletion Confirmation Pattern
+
+**Problem**: Users should not accidentally delete a wallet/category that's actively used in transactions.
+
+**Solution**: Two-phase deletion API with confirmation.
+
+#### Delete Request Flow
+
+**Phase 1: Pre-delete Check**
+- Client calls DELETE endpoint with `confirm=false` (or omits the parameter)
+- Server checks if wallet/category has existing non-deleted transactions/postings
+- If used: Return HTTP 200 with a confirmation prompt (NOT an error)
+- If unused: Proceed to Phase 2
+
+**Phase 2: Confirmed Deletion**
+- Client calls DELETE endpoint with `confirm=true`
+- Server performs soft delete regardless of transaction usage
+
+#### API Design
+
+**DELETE /wallets/{id}**
+
+```
+Query Parameter:
+  confirm: boolean (optional, default: false)
+    - false: Pre-delete check (returns confirmation if needed)
+    - true: Force deletion (archives wallet regardless of usage)
+```
+
+**Phase 1 Response (used in transactions, needs confirmation):**
+
+```json
+{
+  "status": "CONFIRMATION_REQUIRED",
+  "data": {
+    "id": "w123",
+    "name": "My Cash",
+    "transaction_count": 42,
+    "warning": "This wallet is used in 42 transactions. Deleting it will archive the wallet name but keep all transaction data intact."
+  },
+  "confirmation_required": true,
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+**Phase 1 Response (NOT used in transactions, safe to delete):**
+
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "id": "w123",
+    "name": "My Cash [ARCHIVED 1708425600]",
+    "deleted_at": 1708425600
+  },
+  "confirmation_required": false,
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+**Phase 2 Response (deletion confirmed):**
+
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "id": "w123",
+    "name": "My Cash [ARCHIVED 1708425600]",
+    "deleted_at": 1708425600,
+    "transaction_count_archived": 42
+  },
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+#### Implementation Notes
+
+- **Single HTTP Status**: Always return 200 (not an error)
+- **Confirmation Flag**: `confirmation_required` field tells client whether to show confirmation dialog
+- **Transaction Count**: Helps user understand the impact of deletion
+- **Safety**: Soft delete guarantees no data loss even if archived wallet is referenced by transactions
+
+#### Client-Side Flow Example
+
+```
+1. User clicks "Delete Wallet"
+2. Client calls: DELETE /wallets/{id} (no confirm param)
+3. Server returns confirmation_required = true + transaction_count
+4. UI shows: "This wallet has 42 transactions. Delete anyway?"
+5. User confirms "Yes"
+6. Client calls: DELETE /wallets/{id}?confirm=true
+7. Wallet is archived successfully
+```
 
 ---
 
