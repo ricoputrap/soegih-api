@@ -848,68 +848,896 @@ All successful API responses follow this standard format:
 
 ## H. API Design
 
-### E.1. Category API
+### H.1. Category API
 
-#### E.1.1. Get All Categories
+#### H.1.1. Get All Categories
 
-TODO
+**GET /api/v1/categories**
 
-#### E.1.2. Create Category
+**Query Parameters:**
+- `limit`: Number of items per page (default: 10, max: 100)
+- `offset`: Number of items to skip (default: 0)
+- `type`: Filter by type (`expense` | `income`)
+- `sort`: Sort by field (e.g., `name:asc`, `created_at:desc`)
+- `search`: Search by name (partial match)
+- `include_deleted`: Include archived categories (`true` | `false`, default: false)
 
-TODO
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "c1",
+      "name": "Groceries",
+      "description": "Food and groceries",
+      "type": "expense",
+      "created_at": 1708425600,
+      "updated_at": 1708425600,
+      "deleted_at": null
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 25,
+    "has_next": true,
+    "has_previous": false
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
 
-#### E.1.3. Update Category
+---
 
-TODO
+#### H.1.1.1. Get Single Category
 
-#### E.1.4. Delete Single Category
+**GET /api/v1/categories/{id}**
 
-TODO
+**Response:**
+```json
+{
+  "data": {
+    "id": "c1",
+    "name": "Groceries",
+    "description": "Food and groceries",
+    "type": "expense",
+    "created_at": 1708425600,
+    "updated_at": 1708425600,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
 
-#### E.1.5. Delete Multiple Categories
+---
 
-TODO
+#### H.1.2. Create Category
 
-### E.2. Wallet API
+**POST /api/v1/categories**
 
-#### E.2.1. Get All Wallets
+**Request Body:**
+```json
+{
+  "name": "Utilities",
+  "description": "Electricity, water, gas",
+  "type": "expense"
+}
+```
 
-TODO
+**Response (201 Created):**
+```json
+{
+  "data": {
+    "id": "c2",
+    "name": "Utilities",
+    "description": "Electricity, water, gas",
+    "type": "expense",
+    "created_at": 1708425610,
+    "updated_at": 1708425610,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
 
-#### E.2.2. Create Wallet
+---
 
-TODO
+#### H.1.3. Update Category
 
-#### E.2.3. Update Wallet
+**PATCH /api/v1/categories/{id}**
 
-TODO
+**Request Body (Update fields):**
+```json
+{
+  "name": "Updated Utilities",
+  "description": "Updated description",
+  "type": "expense"
+}
+```
 
-#### E.2.4. Delete Single Wallet
+**Request Body (Restore archived category):**
+```json
+{
+  "deleted_at": null
+}
+```
 
-TODO
+**Response:**
+```json
+{
+  "data": {
+    "id": "c2",
+    "name": "Updated Utilities",
+    "description": "Updated description",
+    "type": "expense",
+    "created_at": 1708425610,
+    "updated_at": 1708425620,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425620,
+    "version": "1.0"
+  }
+}
+```
 
-#### E.2.5. Delete Multiple Wallets
+---
 
-TODO
+#### H.1.4. Delete Single Category
 
-### E.3. Transaction API
+**DELETE /api/v1/categories/{id}**
 
-#### E.3.1. Get All Transactions
+**Query Parameters:**
+- `confirm`: Force deletion confirmation (`true` | `false`, default: false)
 
-TODO
+**Phase 1 Response (Confirmation Required):**
+```json
+{
+  "status": "CONFIRMATION_REQUIRED",
+  "data": {
+    "id": "c2",
+    "name": "Groceries",
+    "transaction_count": 42,
+    "warning": "This category is used in 42 transactions. Deleting it will archive the category name but keep all transaction data intact."
+  },
+  "confirmation_required": true,
+  "meta": {
+    "timestamp": 1708425630,
+    "version": "1.0"
+  }
+}
+```
 
-#### E.3.2. Create Transaction
+**Phase 2 Response (Deleted - confirm=true):**
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "id": "c2",
+    "name": "Groceries [ARCHIVED 1708425630]",
+    "deleted_at": 1708425630,
+    "transaction_count_archived": 42
+  },
+  "meta": {
+    "timestamp": 1708425630,
+    "version": "1.0"
+  }
+}
+```
 
-TODO
+---
 
-#### E.3.3. Update Transaction
+#### H.1.5. Delete Multiple Categories
 
-TODO
+**DELETE /api/v1/categories**
 
-#### E.3.4. Delete Single Transaction
+**Request Body:**
+```json
+{
+  "ids": ["c1", "c2", "c3"],
+  "confirm": false
+}
+```
 
-TODO
+**Phase 1 Response (Confirmation Required):**
+```json
+{
+  "status": "CONFIRMATION_REQUIRED",
+  "data": {
+    "total_selected": 3,
+    "items_in_use": [
+      {
+        "id": "c1",
+        "name": "Groceries",
+        "transaction_count": 42
+      },
+      {
+        "id": "c2",
+        "name": "Transport",
+        "transaction_count": 15
+      }
+    ],
+    "items_safe_to_delete": [
+      {
+        "id": "c3",
+        "name": "Entertainment",
+        "transaction_count": 0
+      }
+    ],
+    "warning": "2 out of 3 selected categories are used in transactions. Deleting will archive them but keep all transaction data intact."
+  },
+  "confirmation_required": true,
+  "meta": {
+    "timestamp": 1708425630,
+    "version": "1.0"
+  }
+}
+```
 
-#### E.3.5. Delete Multiple Transactions
+**Phase 2 Response (Deleted - confirm=true):**
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "total_selected": 3,
+    "deleted_count": 3,
+    "items": [
+      {
+        "id": "c1",
+        "name": "Groceries [ARCHIVED 1708425630]",
+        "deleted_at": 1708425630,
+        "transaction_count_archived": 42
+      },
+      {
+        "id": "c2",
+        "name": "Transport [ARCHIVED 1708425630]",
+        "deleted_at": 1708425630,
+        "transaction_count_archived": 15
+      },
+      {
+        "id": "c3",
+        "name": "Entertainment [ARCHIVED 1708425630]",
+        "deleted_at": 1708425630,
+        "transaction_count_archived": 0
+      }
+    ]
+  },
+  "meta": {
+    "timestamp": 1708425630,
+    "version": "1.0"
+  }
+}
+```
 
-TODO
+---
+
+### H.2. Wallet API
+
+#### H.2.1. Get All Wallets
+
+**GET /api/v1/wallets**
+
+**Query Parameters:**
+- `limit`: Number of items per page (default: 10, max: 100)
+- `offset`: Number of items to skip (default: 0)
+- `type`: Filter by type (`cash` | `bank` | `e-wallet` | `other`)
+- `sort`: Sort by field (e.g., `name:asc`, `balance:desc`)
+- `search`: Search by name (partial match)
+- `include_deleted`: Include archived wallets (`true` | `false`, default: false)
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "w1",
+      "name": "My Cash",
+      "type": "cash",
+      "balance": 500000,
+      "currency": "IDR",
+      "created_at": 1708425600,
+      "updated_at": 1708425600,
+      "deleted_at": null
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 5,
+    "has_next": false,
+    "has_previous": false
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.2.1.1. Get Single Wallet
+
+**GET /api/v1/wallets/{id}**
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "w1",
+    "name": "My Cash",
+    "type": "cash",
+    "balance": 500000,
+    "currency": "IDR",
+    "created_at": 1708425600,
+    "updated_at": 1708425600,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.2.2. Create Wallet
+
+**POST /api/v1/wallets**
+
+**Request Body:**
+```json
+{
+  "name": "Savings Account",
+  "type": "bank",
+  "currency": "IDR"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "data": {
+    "id": "w2",
+    "name": "Savings Account",
+    "type": "bank",
+    "balance": 0,
+    "currency": "IDR",
+    "created_at": 1708425620,
+    "updated_at": 1708425620,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425620,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.2.3. Update Wallet
+
+**PATCH /api/v1/wallets/{id}**
+
+**Request Body (Update fields):**
+```json
+{
+  "name": "Updated Savings",
+  "type": "e-wallet"
+}
+```
+
+**Request Body (Restore archived wallet):**
+```json
+{
+  "deleted_at": null
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "w2",
+    "name": "Updated Savings",
+    "type": "e-wallet",
+    "balance": 500000,
+    "currency": "IDR",
+    "created_at": 1708425620,
+    "updated_at": 1708425630,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425630,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.2.4. Delete Single Wallet
+
+**DELETE /api/v1/wallets/{id}**
+
+**Query Parameters:**
+- `confirm`: Force deletion confirmation (`true` | `false`, default: false)
+
+**Phase 1 Response (Confirmation Required):**
+```json
+{
+  "status": "CONFIRMATION_REQUIRED",
+  "data": {
+    "id": "w1",
+    "name": "My Cash",
+    "transaction_count": 42,
+    "warning": "This wallet is used in 42 transactions. Deleting it will archive the wallet name but keep all transaction data intact."
+  },
+  "confirmation_required": true,
+  "meta": {
+    "timestamp": 1708425640,
+    "version": "1.0"
+  }
+}
+```
+
+**Phase 2 Response (Deleted - confirm=true):**
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "id": "w1",
+    "name": "My Cash [ARCHIVED 1708425640]",
+    "deleted_at": 1708425640,
+    "transaction_count_archived": 42
+  },
+  "meta": {
+    "timestamp": 1708425640,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.2.5. Delete Multiple Wallets
+
+**DELETE /api/v1/wallets**
+
+**Request Body:**
+```json
+{
+  "ids": ["w1", "w2", "w3"],
+  "confirm": false
+}
+```
+
+**Phase 1 Response (Confirmation Required):**
+```json
+{
+  "status": "CONFIRMATION_REQUIRED",
+  "data": {
+    "total_selected": 3,
+    "items_in_use": [
+      {
+        "id": "w1",
+        "name": "My Cash",
+        "transaction_count": 42
+      }
+    ],
+    "items_safe_to_delete": [
+      {
+        "id": "w2",
+        "name": "Savings",
+        "transaction_count": 0
+      },
+      {
+        "id": "w3",
+        "name": "E-wallet",
+        "transaction_count": 0
+      }
+    ],
+    "warning": "1 out of 3 selected wallets is used in transactions. Deleting will archive it but keep all transaction data intact."
+  },
+  "confirmation_required": true,
+  "meta": {
+    "timestamp": 1708425640,
+    "version": "1.0"
+  }
+}
+```
+
+**Phase 2 Response (Deleted - confirm=true):**
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "total_selected": 3,
+    "deleted_count": 3,
+    "items": [
+      {
+        "id": "w1",
+        "name": "My Cash [ARCHIVED 1708425640]",
+        "deleted_at": 1708425640,
+        "transaction_count_archived": 42
+      },
+      {
+        "id": "w2",
+        "name": "Savings [ARCHIVED 1708425640]",
+        "deleted_at": 1708425640,
+        "transaction_count_archived": 0
+      },
+      {
+        "id": "w3",
+        "name": "E-wallet [ARCHIVED 1708425640]",
+        "deleted_at": 1708425640,
+        "transaction_count_archived": 0
+      }
+    ]
+  },
+  "meta": {
+    "timestamp": 1708425640,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+### H.3. Transaction API
+
+#### H.3.1. Get All Transactions
+
+**GET /api/v1/transactions**
+
+**Query Parameters:**
+- `limit`: Number of items per page (default: 10, max: 100)
+- `offset`: Number of items to skip (default: 0)
+- `type`: Filter by type (`expense` | `income` | `transfer`)
+- `wallet_id`: Filter by wallet ID
+- `category_id`: Filter by category ID (for income/expense only)
+- `occurred_at_gte`: Filter by start date (unix timestamp)
+- `occurred_at_lte`: Filter by end date (unix timestamp)
+- `sort`: Sort by field (e.g., `occurred_at:desc`, `amount:asc`)
+- `search`: Search by note (partial match)
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "t1",
+      "type": "expense",
+      "amount": 50000,
+      "occurred_at": 1708425600,
+      "category": {
+        "id": "c1",
+        "name": "Groceries"
+      },
+      "wallet": {
+        "id": "w1",
+        "name": "My Cash"
+      },
+      "note": "Weekly shopping",
+      "payee": null,
+      "created_at": 1708425600,
+      "updated_at": 1708425600,
+      "deleted_at": null
+    },
+    {
+      "id": "t2",
+      "type": "transfer",
+      "amount": 100000,
+      "occurred_at": 1708425700,
+      "source_wallet": {
+        "id": "w1",
+        "name": "My Cash"
+      },
+      "destination_wallet": {
+        "id": "w2",
+        "name": "Savings"
+      },
+      "note": "Transfer to savings",
+      "category": null,
+      "created_at": 1708425700,
+      "updated_at": 1708425700,
+      "deleted_at": null
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 150,
+    "has_next": true,
+    "has_previous": false
+  },
+  "meta": {
+    "timestamp": 1708425710,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.3.1.1. Get Single Transaction
+
+**GET /api/v1/transactions/{id}**
+
+**Response (Income/Expense):**
+```json
+{
+  "data": {
+    "id": "t1",
+    "type": "expense",
+    "amount": 50000,
+    "occurred_at": 1708425600,
+    "category": {
+      "id": "c1",
+      "name": "Groceries"
+    },
+    "wallet": {
+      "id": "w1",
+      "name": "My Cash"
+    },
+    "note": "Weekly shopping",
+    "payee": null,
+    "created_at": 1708425600,
+    "updated_at": 1708425600
+  },
+  "meta": {
+    "timestamp": 1708425610,
+    "version": "1.0"
+  }
+}
+```
+
+**Response (Transfer):**
+```json
+{
+  "data": {
+    "id": "t2",
+    "type": "transfer",
+    "amount": 100000,
+    "occurred_at": 1708425700,
+    "source_wallet": {
+      "id": "w1",
+      "name": "My Cash"
+    },
+    "destination_wallet": {
+      "id": "w2",
+      "name": "Savings"
+    },
+    "note": "Transfer to savings",
+    "category": null,
+    "created_at": 1708425700,
+    "updated_at": 1708425700
+  },
+  "meta": {
+    "timestamp": 1708425710,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.3.2. Create Transaction
+
+**POST /api/v1/transactions**
+
+**Request Body (Income/Expense):**
+```json
+{
+  "type": "expense",
+  "amount": 50000,
+  "occurred_at": 1708425600,
+  "wallet_id": "w1",
+  "category_id": "c1",
+  "note": "Weekly shopping",
+  "payee": null
+}
+```
+
+**Request Body (Transfer):**
+```json
+{
+  "type": "transfer",
+  "amount": 100000,
+  "occurred_at": 1708425700,
+  "source_wallet_id": "w1",
+  "destination_wallet_id": "w2",
+  "note": "Transfer to savings"
+}
+```
+
+**Response (201 Created - Income/Expense):**
+```json
+{
+  "data": {
+    "id": "t3",
+    "type": "expense",
+    "amount": 50000,
+    "occurred_at": 1708425600,
+    "category": {
+      "id": "c1",
+      "name": "Groceries"
+    },
+    "wallet": {
+      "id": "w1",
+      "name": "My Cash"
+    },
+    "note": "Weekly shopping",
+    "payee": null,
+    "created_at": 1708425720,
+    "updated_at": 1708425720
+  },
+  "meta": {
+    "timestamp": 1708425720,
+    "version": "1.0"
+  }
+}
+```
+
+**Response (201 Created - Transfer):**
+```json
+{
+  "data": {
+    "id": "t4",
+    "type": "transfer",
+    "amount": 100000,
+    "occurred_at": 1708425700,
+    "source_wallet": {
+      "id": "w1",
+      "name": "My Cash"
+    },
+    "destination_wallet": {
+      "id": "w2",
+      "name": "Savings"
+    },
+    "note": "Transfer to savings",
+    "category": null,
+    "created_at": 1708425720,
+    "updated_at": 1708425720
+  },
+  "meta": {
+    "timestamp": 1708425720,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.3.3. Update Transaction
+
+**PATCH /api/v1/transactions/{id}**
+
+**Editable Fields:**
+- **Income/Expense**: amount, category_id, note, payee, wallet_id (type cannot change)
+- **Transfer**: amount, source_wallet_id, destination_wallet_id (type cannot change, no category)
+
+**Request Body (Income/Expense - Update fields):**
+```json
+{
+  "amount": 60000,
+  "category_id": "c2",
+  "note": "Updated note",
+  "payee": "John Doe",
+  "wallet_id": "w2"
+}
+```
+
+**Request Body (Transfer - Update amount and wallets):**
+```json
+{
+  "amount": 150000,
+  "source_wallet_id": "w1",
+  "destination_wallet_id": "w3"
+}
+```
+
+**Response (Income/Expense):**
+```json
+{
+  "data": {
+    "id": "t3",
+    "type": "expense",
+    "amount": 60000,
+    "occurred_at": 1708425600,
+    "category": {
+      "id": "c2",
+      "name": "Transport"
+    },
+    "wallet": {
+      "id": "w2",
+      "name": "Savings"
+    },
+    "note": "Updated note",
+    "payee": "John Doe",
+    "created_at": 1708425720,
+    "updated_at": 1708425730
+  },
+  "meta": {
+    "timestamp": 1708425730,
+    "version": "1.0"
+  }
+}
+```
+
+**Response (Transfer):**
+```json
+{
+  "data": {
+    "id": "t4",
+    "type": "transfer",
+    "amount": 150000,
+    "occurred_at": 1708425700,
+    "source_wallet": {
+      "id": "w1",
+      "name": "My Cash"
+    },
+    "destination_wallet": {
+      "id": "w3",
+      "name": "E-wallet"
+    },
+    "note": "Transfer to savings",
+    "category": null,
+    "created_at": 1708425720,
+    "updated_at": 1708425730
+  },
+  "meta": {
+    "timestamp": 1708425730,
+    "version": "1.0"
+  }
+}
+```
+
+---
+
+#### H.3.4. Delete Single Transaction
+
+**DELETE /api/v1/transactions/{id}**
+
+**Notes:**
+- Transaction is **hard-deleted immediately** (not recoverable)
+- Wallet balances are automatically adjusted
+- No confirmation dialog shown (user must confirm deletion on client side)
+- Empty response body with status 204 (No Content)
+
+**Response (204 No Content):**
+- Empty body
+
+---
+
+#### H.3.5. Delete Multiple Transactions
+
+**DELETE /api/v1/transactions**
+
+**Request Body:**
+```json
+{
+  "ids": ["t1", "t2", "t3"]
+}
+```
+
+**Notes:**
+- All transactions are **hard-deleted immediately** (not recoverable)
+- Wallet balances are automatically adjusted for all affected wallets
+- No confirmation dialog shown (user must confirm deletion on client side)
+- Atomic operation: all transactions deleted together or request fails
+- Empty response body with status 204 (No Content)
+
+**Response (204 No Content):**
+- Empty body
