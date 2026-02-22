@@ -1,0 +1,86 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CategoryType {
+  expense
+  income
+}
+
+enum WalletType {
+  cash
+  bank
+  e_wallet
+  other
+}
+
+enum TransactionType {
+  expense
+  income
+  transfer
+}
+
+model Category {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  type        CategoryType
+  created_at  Int
+  updated_at  Int
+  deleted_at  Int?
+
+  events TransactionEvent[]
+
+  @@map("categories")
+}
+
+model Wallet {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  type       WalletType
+  currency   String     @default("IDR")
+  created_at Int
+  updated_at Int
+  deleted_at Int?
+
+  postings Posting[]
+
+  @@map("wallets")
+}
+
+model TransactionEvent {
+  id          String          @id @default(cuid())
+  occurred_at Int
+  type        TransactionType
+  note        String?
+  payee       String?
+  category_id String?
+  created_at  Int
+  updated_at  Int
+  deleted_at  Int?
+
+  category Category? @relation(fields: [category_id], references: [id])
+  postings Posting[]
+
+  @@map("transaction_events")
+}
+
+model Posting {
+  id         String @id @default(cuid())
+  event_id   String
+  wallet_id  String
+  amount     Int
+  created_at Int
+  deleted_at Int?
+
+  event  TransactionEvent @relation(fields: [event_id], references: [id])
+  wallet Wallet           @relation(fields: [wallet_id], references: [id])
+
+  @@map("postings")
+}
