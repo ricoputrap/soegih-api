@@ -10,6 +10,13 @@ Soegih API is a backend service that provides a set of APIs for managing and int
 - **Language**: TypeScript
 - **Database**: Supabase
 - **API Style**: RESTful JSON APIs
+- **API Version**: v1 (prefix: `/api/v1/`)
+
+### A.2. Date/Time Format
+
+- All timestamps are in **unix epoch** format (seconds since January 1, 1970 UTC)
+- Timezone: **UTC** (user timezone handling will be added in next development phase with user authentication)
+- Example: `1708425600` represents February 19, 2026 at 12:00:00 UTC
 
 ## B. Functional Requirements
 
@@ -171,12 +178,20 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 
 ### E.3. Transaction Constraints
 
-- Transaction type cannot be changed after creation (immutable property)
-- Transaction can be edited: amount, note, payee, category, wallet (except type)
+- **Type**: Cannot be changed after creation (immutable property)
+- **Income/Expense Transactions** can be edited: amount, note, payee, category, wallet
+- **Transfer Transactions** can be edited: amount, source wallet, destination wallet
+  - Transfers have no category (null) and cannot be assigned one
+  - When editing transfer amount or wallets, both postings are atomically updated
 - Changing wallet in a transaction updates the associated posting's wallet_id
 - Transfer transactions must have exactly 2 postings with equal and opposite amounts
-- Transfer cannot be edited (delete and recreate required)
-- Transfers cannot be reversed without creating a new transfer transaction
+- Amount constraints: Minimum 0, no maximum
+
+#### E.3.1. Transaction Deletion
+
+- When a transaction is deleted, it is **hard-deleted** (completely removed, not soft-deleted)
+- Wallet balances are automatically adjusted when a transaction is deleted
+- Deleted transactions cannot be recovered (no soft delete for transactions)
 
 ### E.4. Soft Delete vs Hard Delete Strategy
 
@@ -332,6 +347,240 @@ Query Parameter:
 7. Wallet is archived successfully
 ```
 
+### E.6. Bulk Deletion with Confirmation Pattern
+
+**Problem**: Users should be able to delete multiple wallets/categories safely with confirmation only if any of them are in use.
+
+**Solution**: Two-phase bulk deletion API similar to single deletion.
+
+#### Bulk Delete Request Flow
+
+**Phase 1: Pre-delete Check**
+- Client calls DELETE endpoint with array of IDs and `confirm=false` (or omits the parameter)
+- Server checks if ANY of the selected items have existing non-deleted transactions/postings
+- If any are used: Return HTTP 200 with list of items in use for confirmation
+- If none are used: Proceed to Phase 2 and delete all items
+
+**Phase 2: Confirmed Bulk Deletion**
+- Client calls DELETE endpoint with array of IDs and `confirm=true`
+- Server soft-deletes ALL selected items regardless of transaction usage
+- Returns confirmation with count of deleted items
+
+#### API Design
+
+**DELETE /wallets (or /categories)**
+
+```
+Request Body:
+  {
+    "ids": ["w123", "w456", "w789"],
+    "confirm": false  (optional, default: false)
+  }
+```
+
+**Phase 1 Response (some items in use, needs confirmation):**
+
+```json
+{
+  "status": "CONFIRMATION_REQUIRED",
+  "data": {
+    "total_selected": 3,
+    "items_in_use": [
+      {
+        "id": "w123",
+        "name": "My Cash",
+        "transaction_count": 42
+      },
+      {
+        "id": "w456",
+        "name": "Savings",
+        "transaction_count": 15
+      }
+    ],
+    "items_safe_to_delete": [
+      {
+        "id": "w789",
+        "name": "Old Wallet",
+        "transaction_count": 0
+      }
+    ],
+    "warning": "2 out of 3 selected wallets are used in transactions. Deleting will archive them but keep all transaction data intact."
+  },
+  "confirmation_required": true,
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+**Phase 1 Response (no items in use, safe to delete all):**
+
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "total_selected": 3,
+    "deleted_count": 3,
+    "items": [
+      {
+        "id": "w123",
+        "name": "Old Wallet 1 [ARCHIVED 1708425600]",
+        "deleted_at": 1708425600
+      },
+      {
+        "id": "w456",
+        "name": "Old Wallet 2 [ARCHIVED 1708425600]",
+        "deleted_at": 1708425600
+      },
+      {
+        "id": "w789",
+        "name": "Old Wallet 3 [ARCHIVED 1708425600]",
+        "deleted_at": 1708425600
+      }
+    ]
+  },
+  "confirmation_required": false,
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+**Phase 2 Response (deletion confirmed):**
+
+```json
+{
+  "status": "DELETED",
+  "data": {
+    "total_selected": 3,
+    "deleted_count": 3,
+    "items": [
+      {
+        "id": "w123",
+        "name": "My Cash [ARCHIVED 1708425600]",
+        "deleted_at": 1708425600,
+        "transaction_count_archived": 42
+      },
+      {
+        "id": "w456",
+        "name": "Savings [ARCHIVED 1708425600]",
+        "deleted_at": 1708425600,
+        "transaction_count_archived": 15
+      },
+      {
+        "id": "w789",
+        "name": "Old Wallet [ARCHIVED 1708425600]",
+        "deleted_at": 1708425600,
+        "transaction_count_archived": 0
+      }
+    ]
+  },
+  "meta": {
+    "timestamp": 1708425600,
+    "version": "1.0"
+  }
+}
+```
+
+#### Implementation Notes
+
+- **Atomic Operation**: All selected items are deleted together or not at all
+- **Partial Confirmation**: Client shows only items that need confirmation
+- **Transaction Count**: Helps user understand impact of each deletion
+- **Safety**: Soft delete guarantees no data loss even if archived items are referenced
+
+#### Client-Side Flow Example
+
+```
+1. User selects 3 wallets to delete
+2. Client calls: DELETE /wallets (body: {ids: [...], confirm: false})
+3. Server returns items_in_use (2 items) + items_safe_to_delete (1 item)
+4. UI shows dialog: "2 wallets have transactions. Delete all anyway?"
+5. User confirms "Yes, delete all"
+6. Client calls: DELETE /wallets (body: {ids: [...], confirm: true})
+7. All 3 wallets are archived successfully
+```
+
+### E.7. Deleted/Archived Resource Queries
+
+**Problem**: Users need to view and potentially unarchive deleted wallets/categories.
+
+**Solution**: Use `include_deleted` query parameter to show archived items.
+
+#### Query Parameter
+
+**GET /wallets?include_deleted=true**
+
+```
+Query Parameter:
+  include_deleted: boolean (optional, default: false)
+    - false: Returns only active items (WHERE deleted_at IS NULL)
+    - true: Returns both active and deleted items
+```
+
+#### Implementation Notes
+
+- By default, all list endpoints return only active items
+- Add `include_deleted=true` to retrieve archived items
+- Archived items have non-null `deleted_at` timestamp and name with "[ARCHIVED ...]" suffix
+- Can be combined with other filters: `GET /wallets?type=cash&include_deleted=true`
+
+#### Unarchive/Restore Operation
+
+**PATCH /wallets/{id}**
+
+```
+Request Body:
+{
+  "deleted_at": null
+}
+
+Response:
+{
+  "data": {
+    "id": "w123",
+    "name": "My Cash",
+    "type": "cash",
+    "balance": 500000,
+    "currency": "IDR",
+    "created_at": 1708425600,
+    "updated_at": 1708425650,
+    "deleted_at": null
+  },
+  "meta": {
+    "timestamp": 1708425650,
+    "version": "1.0"
+  }
+}
+```
+
+#### Restore Validation
+
+- Can only restore archived wallets/categories (`deleted_at IS NOT NULL`)
+- Setting `deleted_at: null` removes the archived status
+- Restored name should have "[ARCHIVED ...]" suffix removed (cleaned up on restore)
+- If original name already exists (created after deletion), return `CONFLICT` error with suggestion to rename first
+- Apply same validation rules as create/update operations
+
+### E.8. Naming Conventions
+
+**Database & API Fields**:
+- Use `snake_case` for all database columns and API request/response fields
+- Use `_id` suffix for foreign key fields (e.g., `wallet_id`, `category_id`, `event_id`)
+- Examples:
+  - ✅ `wallet_id`, `category_id`, `created_at`, `updated_at`, `deleted_at`
+  - ✅ `transaction_count`, `confirmation_required`, `is_safe`
+  - ❌ `walletId`, `walletID` (use snake_case, not camelCase)
+
+**Code (Functions, Variables)**:
+- Use `camelCase` for TypeScript functions and variable names
+- Use `PascalCase` for class and interface names
+- Examples:
+  - ✅ `getWalletById()`, `calculateWalletBalance()`, `isConfirmationRequired`
+  - ✅ `class WalletService`, `interface CreateWalletDto`
+
 ---
 
 ## F. Error Handling & Validation
@@ -353,12 +602,12 @@ Query Parameter:
 #### F.1.3. Transaction Event Validation
 
 - **type**: Required, immutable, must be one of: `expense | income | transfer`
-- **occurred_at**: Required, must not be in the future (or within tolerance, e.g., ±5 minutes)
-- **amount**: Required, must be positive integer > 0
-- **wallet_id**: Required, wallet must exist and not be deleted
+- **occurred_at**: Required, must not be in the future (or within tolerance, e.g., ±5 minutes), unix epoch format
+- **amount**: Required, must be integer >= 0 (minimum 0, no maximum)
+- **wallet_id**: Required, wallet must exist and not be deleted (for income/expense; transfer uses postings)
 - **category_id**: Required for `expense | income`, must be null for `transfer`
 - **note**: Optional, max 500 characters
-- **payee**: Optional, max 100 characters (relevant for income/expense)
+- **payee**: Optional, max 100 characters (relevant for income/expense only)
 
 #### F.1.4. Posting Validation
 
@@ -373,6 +622,9 @@ Query Parameter:
 - When editing a transaction's wallet: the posting's wallet_id must be updated
 - When editing a transaction: type cannot change
 - When creating a transfer: source and destination wallets must be different
+- When creating a transfer: amount must be positive (>= 0)
+- When deleting a transaction: hard delete is performed, wallet balances are adjusted
+- When bulk deleting: if any item is in use by transactions, return list for confirmation before deletion
 
 ### F.2. Error Response Format
 
