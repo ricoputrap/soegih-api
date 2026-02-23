@@ -14,9 +14,13 @@ Soegih API is a backend service that provides a set of APIs for managing and int
 
 ### A.2. Date/Time Format
 
-- All timestamps are in **unix epoch** format (seconds since January 1, 1970 UTC)
+- All timestamps are in **ISO 8601** format (UTC timezone)
 - Timezone: **UTC** (user timezone handling will be added in next development phase with user authentication)
-- Example: `1708425600` represents February 19, 2026 at 12:00:00 UTC
+- Example: `2026-02-19T12:00:00Z` represents February 19, 2026 at 12:00:00 UTC
+- Timestamps are automatically managed:
+  - `created_at`: Set on record creation, immutable
+  - `updated_at`: Automatically updated on every record modification
+  - `deleted_at`: Set on soft delete, can be cleared to restore
 
 ## B. Functional Requirements
 
@@ -74,9 +78,9 @@ Here is the list of functional requirements for the Soegih application. Some API
 - name: string
 - description: string?
 - type: expense | income
-- created_at: timestamp
-- updated_at: timestamp
-- deleted_at: timestamp? (null if not deleted)
+- created_at: DateTime (auto-set on creation)
+- updated_at: DateTime (auto-updated on changes)
+- deleted_at: DateTime? (null if not deleted)
 
 ### D.2. WALLET
 
@@ -85,21 +89,21 @@ Here is the list of functional requirements for the Soegih application. Some API
 - type: cash | bank | e-wallet | other
 - balance: integer (derived from sum of postings)
 - currency: string (default: IDR)
-- created_at: timestamp
-- updated_at: timestamp
-- deleted_at: timestamp? (null if not deleted)
+- created_at: DateTime (auto-set on creation)
+- updated_at: DateTime (auto-updated on changes)
+- deleted_at: DateTime? (null if not deleted)
 
 ### D.3. TRANSACTION_EVENT
 
 - id: string
-- occurred_at: timestamp
+- occurred_at: DateTime
 - type: expense | income | transfer
 - note: string?
 - payee: string?
 - category_id: string? (FK to CATEGORY.id, null for transfer type)
-- created_at: timestamp
-- updated_at: timestamp
-- deleted_at: timestamp? (null if not deleted)
+- created_at: DateTime (auto-set on creation)
+- updated_at: DateTime (auto-updated on changes)
+- deleted_at: DateTime? (null if not deleted)
 
 ### D.4. POSTING
 
@@ -107,8 +111,8 @@ Here is the list of functional requirements for the Soegih application. Some API
 - event_id: string (FK to TRANSACTION_EVENT.id)
 - wallet_id: string (FK to WALLET.id)
 - amount: integer (positive for debit, negative for credit)
-- created_at: timestamp
-- deleted_at: timestamp? (null if not deleted)
+- created_at: DateTime (auto-set on creation)
+- deleted_at: DateTime? (null if not deleted)
 
 ### D.5. Transaction & Posting Relationships
 
@@ -161,7 +165,7 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 - **Deletion Rules**:
   - Wallet can be deleted even if it has existing transactions (soft delete preserves data)
   - Deletion updates wallet name by appending "[ARCHIVED <unix timestamp>]" suffix (see E.4)
-    - Example: "My Cash" → "My Cash [ARCHIVED 1708425600]"
+    - Example: "My Cash" → "My Cash [ARCHIVED 2026-02-19T12:00:00Z]"
   - If wallet is used in existing transactions, the delete API should return a warning flag to prompt user confirmation before actual deletion
   - This prevents accidental deletion while maintaining data integrity through soft delete
 
@@ -172,7 +176,7 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 - **Deletion Rules**:
   - Category can be deleted even if it has existing transactions (soft delete preserves data)
   - Deletion updates category name by appending "[ARCHIVED <unix timestamp>]" suffix (see E.4)
-    - Example: "Groceries" → "Groceries [ARCHIVED 1708425600]"
+    - Example: "Groceries" → "Groceries [ARCHIVED 2026-02-19T12:00:00Z]"
   - If category is used in existing transactions, the delete API should return a warning flag to prompt user confirmation before actual deletion
   - This prevents accidental deletion while maintaining data integrity through soft delete
 
@@ -229,8 +233,8 @@ In a personal finance application, historical data is critical for:
 
 Add `deleted_at: timestamp?` field to all entities. When deleted:
 
-1. Set `deleted_at` to current timestamp (unix timestamp)
-2. Append entity name with "[ARCHIVED <unix timestamp>]" suffix
+1. Set `deleted_at` to current timestamp (ISO 8601 DateTime)
+2. Append entity name with "[ARCHIVED <ISO timestamp>]" suffix
    - For WALLET: Update `name` field
    - For CATEGORY: Update `name` field
    - For TRANSACTION_EVENT & POSTING: No name field to update
@@ -286,7 +290,7 @@ Query Parameter:
   },
   "confirmation_required": true,
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -299,12 +303,12 @@ Query Parameter:
   "status": "DELETED",
   "data": {
     "id": "w123",
-    "name": "My Cash [ARCHIVED 1708425600]",
-    "deleted_at": 1708425600
+    "name": "My Cash [ARCHIVED 2026-02-19T12:00:00Z]",
+    "deleted_at": 2026-02-19T12:00:00Z
   },
   "confirmation_required": false,
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -317,12 +321,12 @@ Query Parameter:
   "status": "DELETED",
   "data": {
     "id": "w123",
-    "name": "My Cash [ARCHIVED 1708425600]",
-    "deleted_at": 1708425600,
+    "name": "My Cash [ARCHIVED 2026-02-19T12:00:00Z]",
+    "deleted_at": 2026-02-19T12:00:00Z,
     "transaction_count_archived": 42
   },
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -408,7 +412,7 @@ Request Body:
   },
   "confirmation_required": true,
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -425,24 +429,24 @@ Request Body:
     "items": [
       {
         "id": "w123",
-        "name": "Old Wallet 1 [ARCHIVED 1708425600]",
-        "deleted_at": 1708425600
+        "name": "Old Wallet 1 [ARCHIVED 2026-02-19T12:00:00Z]",
+        "deleted_at": 2026-02-19T12:00:00Z
       },
       {
         "id": "w456",
-        "name": "Old Wallet 2 [ARCHIVED 1708425600]",
-        "deleted_at": 1708425600
+        "name": "Old Wallet 2 [ARCHIVED 2026-02-19T12:00:00Z]",
+        "deleted_at": 2026-02-19T12:00:00Z
       },
       {
         "id": "w789",
-        "name": "Old Wallet 3 [ARCHIVED 1708425600]",
-        "deleted_at": 1708425600
+        "name": "Old Wallet 3 [ARCHIVED 2026-02-19T12:00:00Z]",
+        "deleted_at": 2026-02-19T12:00:00Z
       }
     ]
   },
   "confirmation_required": false,
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -459,26 +463,26 @@ Request Body:
     "items": [
       {
         "id": "w123",
-        "name": "My Cash [ARCHIVED 1708425600]",
-        "deleted_at": 1708425600,
+        "name": "My Cash [ARCHIVED 2026-02-19T12:00:00Z]",
+        "deleted_at": 2026-02-19T12:00:00Z,
         "transaction_count_archived": 42
       },
       {
         "id": "w456",
-        "name": "Savings [ARCHIVED 1708425600]",
-        "deleted_at": 1708425600,
+        "name": "Savings [ARCHIVED 2026-02-19T12:00:00Z]",
+        "deleted_at": 2026-02-19T12:00:00Z,
         "transaction_count_archived": 15
       },
       {
         "id": "w789",
-        "name": "Old Wallet [ARCHIVED 1708425600]",
-        "deleted_at": 1708425600,
+        "name": "Old Wallet [ARCHIVED 2026-02-19T12:00:00Z]",
+        "deleted_at": 2026-02-19T12:00:00Z,
         "transaction_count_archived": 0
       }
     ]
   },
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -545,12 +549,12 @@ Response:
     "type": "cash",
     "balance": 500000,
     "currency": "IDR",
-    "created_at": 1708425600,
-    "updated_at": 1708425650,
+    "created_at": 2026-02-19T12:00:00Z,
+    "updated_at": 2026-02-19T12:00:50Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425650,
+    "timestamp": 2026-02-19T12:00:50Z,
     "version": "1.0"
   }
 }
@@ -602,7 +606,7 @@ Response:
 #### F.1.3. Transaction Event Validation
 
 - **type**: Required, immutable, must be one of: `expense | income | transfer`
-- **occurred_at**: Required, must not be in the future (or within tolerance, e.g., ±5 minutes), unix epoch format
+- **occurred_at**: Required, must not be in the future (or within tolerance, e.g., ±5 minutes), ISO 8601 DateTime format
 - **amount**: Required, must be integer >= 0 (minimum 0, no maximum)
 - **wallet_id**: Required, wallet must exist and not be deleted (for income/expense; transfer uses postings)
 - **category_id**: Required for `expense | income`, must be null for `transfer`
@@ -640,7 +644,7 @@ All API errors will follow a standard error response format:
       "reason": "Specific validation reason"
     }
   },
-  "timestamp": 1708425600,
+  "timestamp": 2026-02-19T12:00:00Z,
   "path": "/api/v1/wallets"
 }
 ```
@@ -686,7 +690,7 @@ All successful API responses follow this standard format:
     ...other fields...
   },
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -708,7 +712,7 @@ All successful API responses follow this standard format:
     "has_previous": false
   },
   "meta": {
-    "timestamp": 1708425600,
+    "timestamp": 2026-02-19T12:00:00Z,
     "version": "1.0"
   }
 }
@@ -786,11 +790,11 @@ All successful API responses follow this standard format:
     "type": "cash",
     "balance": 500000,
     "currency": "IDR",
-    "created_at": 1708425600,
-    "updated_at": 1708425600
+    "created_at": 2026-02-19T12:00:00Z,
+    "updated_at": 2026-02-19T12:00:00Z
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -805,12 +809,12 @@ All successful API responses follow this standard format:
       "id": "t1",
       "type": "expense",
       "amount": 50000,
-      "occurred_at": 1708425600,
+      "occurred_at": 2026-02-19T12:00:00Z,
       "category": { "id": "c1", "name": "Groceries" },
       "wallet": { "id": "w1", "name": "My Cash" },
       "note": "Weekly shopping",
-      "created_at": 1708425600,
-      "updated_at": 1708425600
+      "created_at": 2026-02-19T12:00:00Z,
+      "updated_at": 2026-02-19T12:00:00Z
     }
   ],
   "pagination": {
@@ -821,7 +825,7 @@ All successful API responses follow this standard format:
     "has_previous": false
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -839,7 +843,7 @@ All successful API responses follow this standard format:
       "reason": "Name must be unique per user"
     }
   },
-  "timestamp": 1708425610,
+  "timestamp": 2026-02-19T12:00:10Z,
   "path": "/api/v1/wallets"
 }
 ```
@@ -871,8 +875,8 @@ All successful API responses follow this standard format:
       "name": "Groceries",
       "description": "Food and groceries",
       "type": "expense",
-      "created_at": 1708425600,
-      "updated_at": 1708425600,
+      "created_at": 2026-02-19T12:00:00Z,
+      "updated_at": 2026-02-19T12:00:00Z,
       "deleted_at": null
     }
   ],
@@ -884,7 +888,7 @@ All successful API responses follow this standard format:
     "has_previous": false
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -904,12 +908,12 @@ All successful API responses follow this standard format:
     "name": "Groceries",
     "description": "Food and groceries",
     "type": "expense",
-    "created_at": 1708425600,
-    "updated_at": 1708425600,
+    "created_at": 2026-02-19T12:00:00Z,
+    "updated_at": 2026-02-19T12:00:00Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -938,12 +942,12 @@ All successful API responses follow this standard format:
     "name": "Utilities",
     "description": "Electricity, water, gas",
     "type": "expense",
-    "created_at": 1708425610,
-    "updated_at": 1708425610,
+    "created_at": 2026-02-19T12:00:10Z,
+    "updated_at": 2026-02-19T12:00:10Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -979,12 +983,12 @@ All successful API responses follow this standard format:
     "name": "Updated Utilities",
     "description": "Updated description",
     "type": "expense",
-    "created_at": 1708425610,
-    "updated_at": 1708425620,
+    "created_at": 2026-02-19T12:00:10Z,
+    "updated_at": 2026-02-19T12:00:20Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425620,
+    "timestamp": 2026-02-19T12:00:20Z,
     "version": "1.0"
   }
 }
@@ -1011,7 +1015,7 @@ All successful API responses follow this standard format:
   },
   "confirmation_required": true,
   "meta": {
-    "timestamp": 1708425630,
+    "timestamp": 2026-02-19T12:00:30Z,
     "version": "1.0"
   }
 }
@@ -1023,12 +1027,12 @@ All successful API responses follow this standard format:
   "status": "DELETED",
   "data": {
     "id": "c2",
-    "name": "Groceries [ARCHIVED 1708425630]",
-    "deleted_at": 1708425630,
+    "name": "Groceries [ARCHIVED 2026-02-19T12:00:30Z]",
+    "deleted_at": 2026-02-19T12:00:30Z,
     "transaction_count_archived": 42
   },
   "meta": {
-    "timestamp": 1708425630,
+    "timestamp": 2026-02-19T12:00:30Z,
     "version": "1.0"
   }
 }
@@ -1077,7 +1081,7 @@ All successful API responses follow this standard format:
   },
   "confirmation_required": true,
   "meta": {
-    "timestamp": 1708425630,
+    "timestamp": 2026-02-19T12:00:30Z,
     "version": "1.0"
   }
 }
@@ -1093,26 +1097,26 @@ All successful API responses follow this standard format:
     "items": [
       {
         "id": "c1",
-        "name": "Groceries [ARCHIVED 1708425630]",
-        "deleted_at": 1708425630,
+        "name": "Groceries [ARCHIVED 2026-02-19T12:00:30Z]",
+        "deleted_at": 2026-02-19T12:00:30Z,
         "transaction_count_archived": 42
       },
       {
         "id": "c2",
-        "name": "Transport [ARCHIVED 1708425630]",
-        "deleted_at": 1708425630,
+        "name": "Transport [ARCHIVED 2026-02-19T12:00:30Z]",
+        "deleted_at": 2026-02-19T12:00:30Z,
         "transaction_count_archived": 15
       },
       {
         "id": "c3",
-        "name": "Entertainment [ARCHIVED 1708425630]",
-        "deleted_at": 1708425630,
+        "name": "Entertainment [ARCHIVED 2026-02-19T12:00:30Z]",
+        "deleted_at": 2026-02-19T12:00:30Z,
         "transaction_count_archived": 0
       }
     ]
   },
   "meta": {
-    "timestamp": 1708425630,
+    "timestamp": 2026-02-19T12:00:30Z,
     "version": "1.0"
   }
 }
@@ -1144,8 +1148,8 @@ All successful API responses follow this standard format:
       "type": "cash",
       "balance": 500000,
       "currency": "IDR",
-      "created_at": 1708425600,
-      "updated_at": 1708425600,
+      "created_at": 2026-02-19T12:00:00Z,
+      "updated_at": 2026-02-19T12:00:00Z,
       "deleted_at": null
     }
   ],
@@ -1157,7 +1161,7 @@ All successful API responses follow this standard format:
     "has_previous": false
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -1178,12 +1182,12 @@ All successful API responses follow this standard format:
     "type": "cash",
     "balance": 500000,
     "currency": "IDR",
-    "created_at": 1708425600,
-    "updated_at": 1708425600,
+    "created_at": 2026-02-19T12:00:00Z,
+    "updated_at": 2026-02-19T12:00:00Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -1213,12 +1217,12 @@ All successful API responses follow this standard format:
     "type": "bank",
     "balance": 0,
     "currency": "IDR",
-    "created_at": 1708425620,
-    "updated_at": 1708425620,
+    "created_at": 2026-02-19T12:00:20Z,
+    "updated_at": 2026-02-19T12:00:20Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425620,
+    "timestamp": 2026-02-19T12:00:20Z,
     "version": "1.0"
   }
 }
@@ -1254,12 +1258,12 @@ All successful API responses follow this standard format:
     "type": "e-wallet",
     "balance": 500000,
     "currency": "IDR",
-    "created_at": 1708425620,
-    "updated_at": 1708425630,
+    "created_at": 2026-02-19T12:00:20Z,
+    "updated_at": 2026-02-19T12:00:30Z,
     "deleted_at": null
   },
   "meta": {
-    "timestamp": 1708425630,
+    "timestamp": 2026-02-19T12:00:30Z,
     "version": "1.0"
   }
 }
@@ -1286,7 +1290,7 @@ All successful API responses follow this standard format:
   },
   "confirmation_required": true,
   "meta": {
-    "timestamp": 1708425640,
+    "timestamp": 2026-02-19T12:00:40Z,
     "version": "1.0"
   }
 }
@@ -1298,12 +1302,12 @@ All successful API responses follow this standard format:
   "status": "DELETED",
   "data": {
     "id": "w1",
-    "name": "My Cash [ARCHIVED 1708425640]",
-    "deleted_at": 1708425640,
+    "name": "My Cash [ARCHIVED 2026-02-19T12:00:40Z]",
+    "deleted_at": 2026-02-19T12:00:40Z,
     "transaction_count_archived": 42
   },
   "meta": {
-    "timestamp": 1708425640,
+    "timestamp": 2026-02-19T12:00:40Z,
     "version": "1.0"
   }
 }
@@ -1352,7 +1356,7 @@ All successful API responses follow this standard format:
   },
   "confirmation_required": true,
   "meta": {
-    "timestamp": 1708425640,
+    "timestamp": 2026-02-19T12:00:40Z,
     "version": "1.0"
   }
 }
@@ -1368,26 +1372,26 @@ All successful API responses follow this standard format:
     "items": [
       {
         "id": "w1",
-        "name": "My Cash [ARCHIVED 1708425640]",
-        "deleted_at": 1708425640,
+        "name": "My Cash [ARCHIVED 2026-02-19T12:00:40Z]",
+        "deleted_at": 2026-02-19T12:00:40Z,
         "transaction_count_archived": 42
       },
       {
         "id": "w2",
-        "name": "Savings [ARCHIVED 1708425640]",
-        "deleted_at": 1708425640,
+        "name": "Savings [ARCHIVED 2026-02-19T12:00:40Z]",
+        "deleted_at": 2026-02-19T12:00:40Z,
         "transaction_count_archived": 0
       },
       {
         "id": "w3",
-        "name": "E-wallet [ARCHIVED 1708425640]",
-        "deleted_at": 1708425640,
+        "name": "E-wallet [ARCHIVED 2026-02-19T12:00:40Z]",
+        "deleted_at": 2026-02-19T12:00:40Z,
         "transaction_count_archived": 0
       }
     ]
   },
   "meta": {
-    "timestamp": 1708425640,
+    "timestamp": 2026-02-19T12:00:40Z,
     "version": "1.0"
   }
 }
@@ -1420,7 +1424,7 @@ All successful API responses follow this standard format:
       "id": "t1",
       "type": "expense",
       "amount": 50000,
-      "occurred_at": 1708425600,
+      "occurred_at": 2026-02-19T12:00:00Z,
       "category": {
         "id": "c1",
         "name": "Groceries"
@@ -1431,15 +1435,15 @@ All successful API responses follow this standard format:
       },
       "note": "Weekly shopping",
       "payee": null,
-      "created_at": 1708425600,
-      "updated_at": 1708425600,
+      "created_at": 2026-02-19T12:00:00Z,
+      "updated_at": 2026-02-19T12:00:00Z,
       "deleted_at": null
     },
     {
       "id": "t2",
       "type": "transfer",
       "amount": 100000,
-      "occurred_at": 1708425700,
+      "occurred_at": 2026-02-19T12:01:40Z,
       "source_wallet": {
         "id": "w1",
         "name": "My Cash"
@@ -1450,8 +1454,8 @@ All successful API responses follow this standard format:
       },
       "note": "Transfer to savings",
       "category": null,
-      "created_at": 1708425700,
-      "updated_at": 1708425700,
+      "created_at": 2026-02-19T12:01:40Z,
+      "updated_at": 2026-02-19T12:01:40Z,
       "deleted_at": null
     }
   ],
@@ -1463,7 +1467,7 @@ All successful API responses follow this standard format:
     "has_previous": false
   },
   "meta": {
-    "timestamp": 1708425710,
+    "timestamp": 2026-02-19T12:01:50Z,
     "version": "1.0"
   }
 }
@@ -1482,7 +1486,7 @@ All successful API responses follow this standard format:
     "id": "t1",
     "type": "expense",
     "amount": 50000,
-    "occurred_at": 1708425600,
+    "occurred_at": 2026-02-19T12:00:00Z,
     "category": {
       "id": "c1",
       "name": "Groceries"
@@ -1493,11 +1497,11 @@ All successful API responses follow this standard format:
     },
     "note": "Weekly shopping",
     "payee": null,
-    "created_at": 1708425600,
-    "updated_at": 1708425600
+    "created_at": 2026-02-19T12:00:00Z,
+    "updated_at": 2026-02-19T12:00:00Z
   },
   "meta": {
-    "timestamp": 1708425610,
+    "timestamp": 2026-02-19T12:00:10Z,
     "version": "1.0"
   }
 }
@@ -1510,7 +1514,7 @@ All successful API responses follow this standard format:
     "id": "t2",
     "type": "transfer",
     "amount": 100000,
-    "occurred_at": 1708425700,
+    "occurred_at": 2026-02-19T12:01:40Z,
     "source_wallet": {
       "id": "w1",
       "name": "My Cash"
@@ -1521,11 +1525,11 @@ All successful API responses follow this standard format:
     },
     "note": "Transfer to savings",
     "category": null,
-    "created_at": 1708425700,
-    "updated_at": 1708425700
+    "created_at": 2026-02-19T12:01:40Z,
+    "updated_at": 2026-02-19T12:01:40Z
   },
   "meta": {
-    "timestamp": 1708425710,
+    "timestamp": 2026-02-19T12:01:50Z,
     "version": "1.0"
   }
 }
@@ -1542,7 +1546,7 @@ All successful API responses follow this standard format:
 {
   "type": "expense",
   "amount": 50000,
-  "occurred_at": 1708425600,
+  "occurred_at": 2026-02-19T12:00:00Z,
   "wallet_id": "w1",
   "category_id": "c1",
   "note": "Weekly shopping",
@@ -1555,7 +1559,7 @@ All successful API responses follow this standard format:
 {
   "type": "transfer",
   "amount": 100000,
-  "occurred_at": 1708425700,
+  "occurred_at": 2026-02-19T12:01:40Z,
   "source_wallet_id": "w1",
   "destination_wallet_id": "w2",
   "note": "Transfer to savings"
@@ -1569,7 +1573,7 @@ All successful API responses follow this standard format:
     "id": "t3",
     "type": "expense",
     "amount": 50000,
-    "occurred_at": 1708425600,
+    "occurred_at": 2026-02-19T12:00:00Z,
     "category": {
       "id": "c1",
       "name": "Groceries"
@@ -1580,11 +1584,11 @@ All successful API responses follow this standard format:
     },
     "note": "Weekly shopping",
     "payee": null,
-    "created_at": 1708425720,
-    "updated_at": 1708425720
+    "created_at": 2026-02-19T12:02:00Z,
+    "updated_at": 2026-02-19T12:02:00Z
   },
   "meta": {
-    "timestamp": 1708425720,
+    "timestamp": 2026-02-19T12:02:00Z,
     "version": "1.0"
   }
 }
@@ -1597,7 +1601,7 @@ All successful API responses follow this standard format:
     "id": "t4",
     "type": "transfer",
     "amount": 100000,
-    "occurred_at": 1708425700,
+    "occurred_at": 2026-02-19T12:01:40Z,
     "source_wallet": {
       "id": "w1",
       "name": "My Cash"
@@ -1608,11 +1612,11 @@ All successful API responses follow this standard format:
     },
     "note": "Transfer to savings",
     "category": null,
-    "created_at": 1708425720,
-    "updated_at": 1708425720
+    "created_at": 2026-02-19T12:02:00Z,
+    "updated_at": 2026-02-19T12:02:00Z
   },
   "meta": {
-    "timestamp": 1708425720,
+    "timestamp": 2026-02-19T12:02:00Z,
     "version": "1.0"
   }
 }
@@ -1655,7 +1659,7 @@ All successful API responses follow this standard format:
     "id": "t3",
     "type": "expense",
     "amount": 60000,
-    "occurred_at": 1708425600,
+    "occurred_at": 2026-02-19T12:00:00Z,
     "category": {
       "id": "c2",
       "name": "Transport"
@@ -1666,11 +1670,11 @@ All successful API responses follow this standard format:
     },
     "note": "Updated note",
     "payee": "John Doe",
-    "created_at": 1708425720,
-    "updated_at": 1708425730
+    "created_at": 2026-02-19T12:02:00Z,
+    "updated_at": 2026-02-19T12:02:10Z
   },
   "meta": {
-    "timestamp": 1708425730,
+    "timestamp": 2026-02-19T12:02:10Z,
     "version": "1.0"
   }
 }
@@ -1683,7 +1687,7 @@ All successful API responses follow this standard format:
     "id": "t4",
     "type": "transfer",
     "amount": 150000,
-    "occurred_at": 1708425700,
+    "occurred_at": 2026-02-19T12:01:40Z,
     "source_wallet": {
       "id": "w1",
       "name": "My Cash"
@@ -1694,11 +1698,11 @@ All successful API responses follow this standard format:
     },
     "note": "Transfer to savings",
     "category": null,
-    "created_at": 1708425720,
-    "updated_at": 1708425730
+    "created_at": 2026-02-19T12:02:00Z,
+    "updated_at": 2026-02-19T12:02:10Z
   },
   "meta": {
-    "timestamp": 1708425730,
+    "timestamp": 2026-02-19T12:02:10Z,
     "version": "1.0"
   }
 }
