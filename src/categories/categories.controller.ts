@@ -1,141 +1,51 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
   Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
   Query,
-  HttpCode,
-  BadRequestException,
+  ValidationPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiQuery,
-  ApiParam,
-} from '@nestjs/swagger';
-import { CategoriesService } from './categories.service.js';
-import { CreateCategoryDto } from './dto/create-category.dto.js';
-import { UpdateCategoryDto } from './dto/update-category.dto.js';
+import { EnumCategorySortKey, EnumCategorySortOrder } from './categories.types';
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { CreateCategoryDto } from './dto/create-category.dto';
+import { CategoriesService } from './categories.service';
+import { GetAllCategoriesDto } from './dto/get-category.dto';
 
-@ApiTags('Categories')
-@Controller('api/v1/categories')
+@Controller('categories')
 export class CategoriesController {
-  constructor(private readonly categoriesService: CategoriesService) {}
+  constructor(private readonly categoryService: CategoriesService) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all categories' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiQuery({ name: 'offset', required: false, type: Number, example: 0 })
-  @ApiQuery({
-    name: 'type',
-    required: false,
-    enum: ['expense', 'income'],
-  })
-  @ApiQuery({ name: 'sort', required: false, type: String })
-  @ApiQuery({ name: 'search', required: false, type: String })
-  @ApiQuery({
-    name: 'include_deleted',
-    required: false,
-    type: Boolean,
-    example: false,
-  })
-  async findAll(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('type') type?: string,
-    @Query('sort') sort?: string,
-    @Query('search') search?: string,
-    @Query('include_deleted') includeDeleted?: string,
-  ) {
-    const limitNum = limit ? Math.min(parseInt(limit, 10), 100) : 10;
-    const offsetNum = offset ? parseInt(offset, 10) : 0;
-    const includeDeletedBool = includeDeleted === 'true';
-
-    if (isNaN(limitNum) || isNaN(offsetNum) || limitNum < 1) {
-      throw new BadRequestException('VALIDATION_ERROR');
-    }
-
-    return this.categoriesService.findAll(
-      limitNum,
-      offsetNum,
-      type,
-      sort,
-      search,
-      includeDeletedBool,
-    );
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get single category' })
-  @ApiParam({ name: 'id', type: String })
-  @ApiResponse({ status: 200, description: 'Category found' })
-  @ApiResponse({ status: 404, description: 'Category not found' })
-  async findOne(@Param('id') id: string) {
-    return this.categoriesService.findOne(id);
+  @ApiQuery({ name: 'sortKey', enum: EnumCategorySortKey })
+  @ApiQuery({ name: 'sortOrder', enum: EnumCategorySortOrder })
+  async getAll(@Query(ValidationPipe) query: GetAllCategoriesDto) {
+    const { sortKey, sortOrder } = query;
+    return this.categoryService.getAll({ sortKey, sortOrder });
   }
 
   @Post()
-  @HttpCode(201)
-  @ApiOperation({ summary: 'Create category' })
-  @ApiResponse({ status: 201, description: 'Category created' })
-  @ApiResponse({ status: 409, description: 'Duplicate category name' })
-  async create(@Body() createCategoryDto: CreateCategoryDto) {
-    return this.categoriesService.create(createCategoryDto);
+  create(@Body(ValidationPipe) body: CreateCategoryDto) {
+    return this.categoryService.create(body);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update category' })
-  @ApiParam({ name: 'id', type: String })
-  @ApiResponse({ status: 200, description: 'Category updated' })
-  @ApiResponse({ status: 404, description: 'Category not found' })
-  @ApiResponse({ status: 409, description: 'Duplicate category name' })
-  async update(
-    @Param('id') id: string,
-    @Body() updateCategoryDto: UpdateCategoryDto,
-  ) {
-    return this.categoriesService.update(id, updateCategoryDto);
-  }
-
-  @Delete(':id')
-  @ApiOperation({ summary: 'Delete single category' })
-  @ApiParam({ name: 'id', type: String })
-  @ApiQuery({
-    name: 'confirm',
-    required: false,
-    type: Boolean,
-    example: false,
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Category deletion (confirmation may be required)',
-  })
-  @ApiResponse({ status: 404, description: 'Category not found' })
-  async delete(
-    @Param('id') id: string,
-    @Query('confirm') confirm?: string,
-  ) {
-    const confirmBool = confirm === 'true';
-    return this.categoriesService.delete(id, confirmBool);
+  update(@Param('id') id: string) {
+    console.log('===== EDIT ID:', id);
+    return { id: 4, name: 'Home & Garden' };
   }
 
   @Delete()
-  @ApiOperation({ summary: 'Delete multiple categories' })
-  @ApiResponse({
-    status: 200,
-    description: 'Categories deletion (confirmation may be required)',
-  })
-  @ApiResponse({ status: 404, description: 'Category not found' })
-  async deleteMultiple(
-    @Body() body: { ids: string[]; confirm?: boolean },
-  ) {
-    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
-      throw new BadRequestException('VALIDATION_ERROR');
-    }
+  delete() {
+    return { id: 4, name: 'Home & Garden' };
+  }
 
-    return this.categoriesService.deleteMultiple(body.ids, body.confirm || false);
+  @Delete()
+  deleteMultiple() {
+    return { id: 4, name: 'Home & Garden' };
   }
 }
