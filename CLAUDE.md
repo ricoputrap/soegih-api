@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Critical Rules
+
+**DO NOT COMMIT changes automatically.** Always wait for explicit user approval before committing. Implement features, build, test, and show the changes staged — let the user review and request the commit.
+
 ## Node Version
 
 Always activate Node 24 before running any `pnpm` or `node` command:
