@@ -19,14 +19,45 @@ export interface ICategory {
   name: string;
   type: EnumCategoryType;
   description?: string;
+  created_at?: Date;
+  updated_at?: Date;
+  deleted_at?: Date | null;
 }
 
 export interface IGetAllCategoriesParams {
   sortKey?: EnumCategorySortKey;
   sortOrder?: EnumCategorySortOrder;
+  limit?: number;
+  offset?: number;
+  type?: EnumCategoryType;
+  search?: string;
+  include_deleted?: boolean;
+}
+
+export interface GetAllCategoriesResponse {
+  data: ICategory[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    has_next: boolean;
+    has_previous: boolean;
+  };
+  meta: {
+    timestamp: string;
+    version: string;
+  };
+}
+
+export interface CreateCategoryResponse {
+  data: ICategory;
+  meta: {
+    timestamp: string;
+    version: string;
+  };
 }
 
 export interface ICategoryService {
-  getAll(params: IGetAllCategoriesParams): Promise<ICategory[]>;
-  create(data: CreateCategoryDto): Promise<ICategory>;
+  getAll(params: IGetAllCategoriesParams): Promise<GetAllCategoriesResponse>;
+  create(data: CreateCategoryDto): Promise<CreateCategoryResponse>;
 }

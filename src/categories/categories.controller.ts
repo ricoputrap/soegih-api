@@ -3,33 +3,50 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
   Query,
   ValidationPipe,
 } from '@nestjs/common';
-import { EnumCategorySortKey, EnumCategorySortOrder } from './categories.types';
-import { ApiOperation, ApiQuery } from '@nestjs/swagger';
-import { CreateCategoryDto } from './dto/create-category.dto';
+import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
+import { CreateCategoryDto } from './dto/create-category.dto';
 import { GetAllCategoriesDto } from './dto/get-category.dto';
+import {
+  GetAllCategoriesResponse,
+  CreateCategoryResponse,
+} from './categories.types';
 
-@Controller('categories')
+@Controller('api/v1/categories')
 export class CategoriesController {
   constructor(private readonly categoryService: CategoriesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all categories' })
-  @ApiQuery({ name: 'sortKey', enum: EnumCategorySortKey })
-  @ApiQuery({ name: 'sortOrder', enum: EnumCategorySortOrder })
-  async getAll(@Query(ValidationPipe) query: GetAllCategoriesDto) {
-    const { sortKey, sortOrder } = query;
-    return this.categoryService.getAll({ sortKey, sortOrder });
+  @ApiOperation({ summary: 'Get all categories with filtering and pagination' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of categories retrieved successfully',
+  })
+  async getAll(
+    @Query(ValidationPipe) query: GetAllCategoriesDto,
+  ): Promise<GetAllCategoriesResponse> {
+    return this.categoryService.getAll(query);
   }
 
   @Post()
-  create(@Body(ValidationPipe) body: CreateCategoryDto) {
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new category' })
+  @ApiResponse({ status: 201, description: 'Category created successfully' })
+  @ApiResponse({
+    status: 409,
+    description: 'Category with same name and type already exists',
+  })
+  async create(
+    @Body(ValidationPipe) body: CreateCategoryDto,
+  ): Promise<CreateCategoryResponse> {
     return this.categoryService.create(body);
   }
 
