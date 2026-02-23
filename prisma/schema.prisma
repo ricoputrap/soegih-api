@@ -28,7 +28,7 @@ enum TransactionType {
 
 model Category {
   id          String       @id @default(cuid())
-  name        String       @unique
+  name        String
   description String?
   type        CategoryType
   created_at  DateTime     @default(now())
@@ -37,6 +37,7 @@ model Category {
 
   events TransactionEvent[]
 
+  @@unique([name, type])
   @@map("categories")
 }
 

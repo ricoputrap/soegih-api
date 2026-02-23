@@ -171,7 +171,7 @@ A `TRANSACTION_EVENT` always has at least one `Posting` record:
 
 ### E.2. Category Constraints
 
-- Category name must be unique globally (no user isolation in MVP, will adjust in next phase)
+- Category uniqueness: The combination of **name + type** must be unique (e.g., "Groceries (expense)" and "Groceries (income)" can coexist)
 - Category type is editable (metadata, not transactional data)
 - **Deletion Rules**:
   - Category can be deleted even if it has existing transactions (soft delete preserves data)
@@ -599,9 +599,10 @@ Response:
 
 #### F.1.2. Category Validation
 
-- **name**: Required, max 100 characters, unique globally
+- **name**: Required, max 100 characters
 - **type**: Required, must be one of: `expense | income`
 - **description**: Optional, max 500 characters
+- **Uniqueness**: The combination of **name + type** must be unique (allows duplicate names with different types)
 
 #### F.1.3. Transaction Event Validation
 
@@ -668,7 +669,7 @@ All API errors will follow a standard error response format:
 | `CATEGORY_NOT_FOUND`      | Category doesn't exist               | Category ID in transaction doesn't match             |
 | `TRANSACTION_NOT_FOUND`   | Transaction doesn't exist            | Trying to update non-existent transaction            |
 | `DUPLICATE_WALLET_NAME`   | Wallet name already exists           | Creating wallet with existing name                   |
-| `DUPLICATE_CATEGORY_NAME` | Category name already exists         | Creating category with existing name                 |
+| `DUPLICATE_CATEGORY_NAME` | Category name+type combination exists | Creating category with same name and type            |
 | `IMMUTABLE_FIELD_CHANGE`  | Attempting to change immutable field | Changing transaction type from `expense` to `income` |
 | `INVALID_TRANSFER`        | Transfer validation failed           | Source and destination wallets are the same          |
 | `INVALID_POSTING_COUNT`   | Posting count mismatch               | Transfer with only 1 posting                         |
