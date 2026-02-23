@@ -31,9 +31,9 @@ model Category {
   name        String       @unique
   description String?
   type        CategoryType
-  created_at  Int
-  updated_at  Int
-  deleted_at  Int?
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+  deleted_at  DateTime?
 
   events TransactionEvent[]
 
@@ -45,9 +45,9 @@ model Wallet {
   name       String     @unique
   type       WalletType
   currency   String     @default("IDR")
-  created_at Int
-  updated_at Int
-  deleted_at Int?
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  deleted_at DateTime?
 
   postings Posting[]
 
@@ -56,14 +56,14 @@ model Wallet {
 
 model TransactionEvent {
   id          String          @id @default(cuid())
-  occurred_at Int
+  occurred_at DateTime
   type        TransactionType
   note        String?
   payee       String?
   category_id String?
-  created_at  Int
-  updated_at  Int
-  deleted_at  Int?
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+  deleted_at  DateTime?
 
   category Category? @relation(fields: [category_id], references: [id])
   postings Posting[]
@@ -72,12 +72,12 @@ model TransactionEvent {
 }
 
 model Posting {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   event_id   String
   wallet_id  String
   amount     Int
-  created_at Int
-  deleted_at Int?
+  created_at DateTime @default(now())
+  deleted_at DateTime?
 
   event  TransactionEvent @relation(fields: [event_id], references: [id])
   wallet Wallet           @relation(fields: [wallet_id], references: [id])
