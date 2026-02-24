@@ -4,7 +4,6 @@ import {
   EnumCategorySortKey,
   EnumCategorySortOrder,
   EnumCategoryType,
-  ICategory,
   ICategoryService,
   IGetAllCategoriesParams,
   GetAllCategoriesResponse,
