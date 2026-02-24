@@ -78,3 +78,46 @@ All relative imports use `.js` extensions — required by `module: "nodenext"` i
 ```ts
 import { PrismaService } from './prisma/prisma.service.js';
 ```
+
+**Note for tests:** In `.spec.ts` files, omit `.js` extensions since Jest runs directly on TypeScript (not compiled code). Jest's `moduleNameMapper` handles the mapping automatically.
+
+```ts
+// ✅ In .spec.ts files
+import { CategoriesService } from './categories.service';
+
+// ✅ In .ts files
+import { CategoriesService } from './categories.service.js';
+```
+
+## Testing
+
+### Mocking services in unit tests
+
+When testing controllers, completely mock the service to avoid database access:
+
+```ts
+let mockService: {
+  getAll: jest.Mock;
+  create: jest.Mock;
+};
+
+beforeEach(async () => {
+  mockService = {
+    getAll: jest.fn(),
+    create: jest.fn(),
+  };
+
+  const module = await Test.createTestingModule({
+    controllers: [CategoriesController],
+    providers: [{ provide: CategoriesService, useValue: mockService }],
+  }).compile();
+});
+
+it('should call service method', async () => {
+  mockService.getAll.mockResolvedValue({ data: [] });
+  const result = await controller.getAll({});
+  expect(mockService.getAll).toHaveBeenCalledWith({});
+});
+```
+
+This ensures **no database writes** during tests — service mocks return hardcoded data.
