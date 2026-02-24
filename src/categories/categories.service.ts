@@ -1,20 +1,25 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client.js';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   EnumCategorySortKey,
   EnumCategorySortOrder,
-  EnumCategoryType,
   ICategoryService,
   IGetAllCategoriesParams,
   GetAllCategoriesResponse,
   CreateCategoryResponse,
 } from './categories.types.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
+import type {
+  ICategoryRepository,
+  CategoryWhereParams,
+} from './repositories/category.repository.interface.js';
+import { CATEGORY_REPOSITORY_TOKEN } from './repositories/category.repository.interface.js';
 
 @Injectable()
 export class CategoriesService implements ICategoryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    @Inject(CATEGORY_REPOSITORY_TOKEN)
+    private readonly categoryRepository: ICategoryRepository,
+  ) {}
 
   async getAll(
     params: IGetAllCategoriesParams = {},
@@ -33,7 +38,7 @@ export class CategoriesService implements ICategoryService {
     const validOffset = Math.max(0, offset || 0);
 
     // Build where clause for filtering
-    const where: Prisma.CategoryWhereInput = {};
+    const where: CategoryWhereParams = {};
 
     // Filter by soft delete status
     if (!include_deleted) {
@@ -55,7 +60,7 @@ export class CategoriesService implements ICategoryService {
 
     // Execute queries in parallel
     const [data, total] = await Promise.all([
-      this.prisma.category.findMany({
+      this.categoryRepository.findMany({
         where,
         take: validLimit,
         skip: validOffset,
@@ -63,21 +68,13 @@ export class CategoriesService implements ICategoryService {
           [sortKey]: sortOrder === EnumCategorySortOrder.ASC ? 'asc' : 'desc',
         },
       }),
-      this.prisma.category.count({ where }),
+      this.categoryRepository.count(where),
     ]);
 
     const timestamp = new Date().toISOString();
 
     return {
-      data: data.map((category) => ({
-        id: category.id,
-        name: category.name,
-        type: category.type as EnumCategoryType,
-        description: category.description || '',
-        created_at: category.created_at,
-        updated_at: category.updated_at,
-        deleted_at: category.deleted_at,
-      })),
+      data,
       pagination: {
         limit: validLimit,
         offset: validOffset,
@@ -93,40 +90,20 @@ export class CategoriesService implements ICategoryService {
   }
 
   async create(data: CreateCategoryDto): Promise<CreateCategoryResponse> {
-    try {
-      const category = await this.prisma.category.create({
-        data: {
-          name: data.name,
-          description: data.description,
-          type: data.type,
-        },
-      });
+    const category = await this.categoryRepository.create({
+      name: data.name,
+      description: data.description,
+      type: data.type,
+    });
 
-      const timestamp = new Date().toISOString();
+    const timestamp = new Date().toISOString();
 
-      return {
-        data: {
-          id: category.id,
-          name: category.name,
-          type: category.type as EnumCategoryType,
-          description: category.description || '',
-          created_at: category.created_at,
-          updated_at: category.updated_at,
-          deleted_at: category.deleted_at,
-        },
-        meta: {
-          timestamp,
-          version: '1.0',
-        },
-      };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('DUPLICATE_CATEGORY_NAME');
-      }
-      throw error;
-    }
+    return {
+      data: category,
+      meta: {
+        timestamp,
+        version: '1.0',
+      },
+    };
   }
 }
