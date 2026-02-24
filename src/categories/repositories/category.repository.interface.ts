@@ -28,8 +28,14 @@ export interface CategoryCreateParams {
   type: string;
 }
 
+export interface CategoryUpdateParams {
+  name?: string;
+  description?: string;
+}
+
 export interface ICategoryRepository {
   findMany(params: CategoryFindManyParams): Promise<ICategory[]>;
   count(where?: CategoryWhereParams): Promise<number>;
   create(data: CategoryCreateParams): Promise<ICategory>;
+  update(id: string, data: CategoryUpdateParams): Promise<ICategory>;
 }

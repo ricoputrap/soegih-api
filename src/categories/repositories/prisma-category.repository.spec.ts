@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaCategoryRepository } from './prisma-category.repository';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
@@ -12,6 +12,7 @@ describe('PrismaCategoryRepository', () => {
       findMany: jest.Mock;
       count: jest.Mock;
       create: jest.Mock;
+      update: jest.Mock;
     };
   };
 
@@ -42,6 +43,7 @@ describe('PrismaCategoryRepository', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         create: jest.fn(),
+        update: jest.fn(),
       },
     };
 
@@ -351,6 +353,88 @@ describe('PrismaCategoryRepository', () => {
       });
 
       expect(result.deleted_at).toEqual(mockTimestamp);
+    });
+  });
+
+  describe('update', () => {
+    it('should call prisma.category.update with correct args and return transformed ICategory', async () => {
+      const updatedRow = { ...mockPrismaCategory, name: 'Updated Utilities' };
+      mockPrismaService.category.update.mockResolvedValue(updatedRow);
+
+      const result = await repository.update('1', {
+        name: 'Updated Utilities',
+      });
+
+      expect(result).toEqual({
+        id: '1',
+        name: 'Updated Utilities',
+        type: EnumCategoryType.EXPENSE,
+        description: 'Electricity, Water, Gas',
+        created_at: mockTimestamp,
+        updated_at: mockTimestamp,
+        deleted_at: null,
+      });
+      expect(mockPrismaService.category.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: { name: 'Updated Utilities' },
+      });
+    });
+
+    it('should throw ConflictException on P2002', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`name`,`type`)',
+        { code: 'P2002', clientVersion: '7.4.1' },
+      );
+      mockPrismaService.category.update.mockRejectedValue(prismaError);
+
+      await expect(repository.update('1', { name: 'Salary' })).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('should throw ConflictException with DUPLICATE_CATEGORY_NAME message on P2002', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`name`,`type`)',
+        { code: 'P2002', clientVersion: '7.4.1' },
+      );
+      mockPrismaService.category.update.mockRejectedValue(prismaError);
+
+      await expect(repository.update('1', { name: 'Salary' })).rejects.toThrow(
+        'DUPLICATE_CATEGORY_NAME',
+      );
+    });
+
+    it('should throw NotFoundException on P2025', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'An operation failed because it depends on one or more records that were required but not found.',
+        { code: 'P2025', clientVersion: '7.4.1' },
+      );
+      mockPrismaService.category.update.mockRejectedValue(prismaError);
+
+      await expect(
+        repository.update('nonexistent', { name: 'Test' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException with CATEGORY_NOT_FOUND message on P2025', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'An operation failed because it depends on one or more records that were required but not found.',
+        { code: 'P2025', clientVersion: '7.4.1' },
+      );
+      mockPrismaService.category.update.mockRejectedValue(prismaError);
+
+      await expect(
+        repository.update('nonexistent', { name: 'Test' }),
+      ).rejects.toThrow('CATEGORY_NOT_FOUND');
+    });
+
+    it('should re-throw other errors', async () => {
+      const error = new Error('Database connection failed');
+      mockPrismaService.category.update.mockRejectedValue(error);
+
+      await expect(repository.update('1', { name: 'Test' })).rejects.toEqual(
+        error,
+      );
     });
   });
 

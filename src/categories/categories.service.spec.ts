@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import {
   EnumCategoryType,
@@ -7,6 +7,7 @@ import {
   EnumCategorySortOrder,
 } from './categories.types';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import {
   ICategoryRepository,
   CATEGORY_REPOSITORY_TOKEN,
@@ -44,6 +45,7 @@ describe('CategoriesService', () => {
       findMany: jest.fn(),
       count: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -200,10 +202,7 @@ describe('CategoriesService', () => {
     });
 
     it('should calculate pagination correctly', async () => {
-      mockRepository.findMany.mockResolvedValue([
-        mockCategory,
-        mockCategory2,
-      ]);
+      mockRepository.findMany.mockResolvedValue([mockCategory, mockCategory2]);
       mockRepository.count.mockResolvedValue(50);
 
       const result = await service.getAll({ limit: 10, offset: 20 });
@@ -372,6 +371,56 @@ describe('CategoriesService', () => {
         updated_at: expect.any(Date),
         deleted_at: null,
       });
+    });
+  });
+
+  describe('update', () => {
+    it('should update a category successfully and return correct shape', async () => {
+      const updatedCategory = { ...mockCategory, name: 'Updated Utilities' };
+      mockRepository.update.mockResolvedValue(updatedCategory);
+
+      const updateDto: UpdateCategoryDto = { name: 'Updated Utilities' };
+      const result = await service.update('1', updateDto);
+
+      expect(result.data).toEqual(updatedCategory);
+      expect(result.meta.version).toBe('1.0');
+      expect(typeof result.meta.timestamp).toBe('string');
+      expect(mockRepository.update).toHaveBeenCalledWith('1', updateDto);
+    });
+
+    it('should pass only provided fields to repository (partial update)', async () => {
+      const updatedCategory = {
+        ...mockCategory,
+        description: 'New description',
+      };
+      mockRepository.update.mockResolvedValue(updatedCategory);
+
+      const updateDto: UpdateCategoryDto = { description: 'New description' };
+      await service.update('1', updateDto);
+
+      expect(mockRepository.update).toHaveBeenCalledWith('1', {
+        description: 'New description',
+      });
+    });
+
+    it('should re-throw NotFoundException from repository', async () => {
+      mockRepository.update.mockRejectedValue(
+        new NotFoundException('CATEGORY_NOT_FOUND'),
+      );
+
+      await expect(
+        service.update('nonexistent-id', { name: 'Test' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should re-throw ConflictException from repository', async () => {
+      mockRepository.update.mockRejectedValue(
+        new ConflictException('DUPLICATE_CATEGORY_NAME'),
+      );
+
+      await expect(service.update('1', { name: 'Salary' })).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });

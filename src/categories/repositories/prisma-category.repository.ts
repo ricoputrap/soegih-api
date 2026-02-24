@@ -1,4 +1,8 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { ICategory } from '../categories.types.js';
@@ -7,6 +11,7 @@ import type {
   ICategoryRepository,
   CategoryFindManyParams,
   CategoryCreateParams,
+  CategoryUpdateParams,
   CategoryWhereParams,
 } from './category.repository.interface.js';
 
@@ -48,6 +53,27 @@ export class PrismaCategoryRepository implements ICategoryRepository {
         error.code === 'P2002'
       ) {
         throw new ConflictException('DUPLICATE_CATEGORY_NAME');
+      }
+      throw error;
+    }
+  }
+
+  async update(id: string, data: CategoryUpdateParams): Promise<ICategory> {
+    try {
+      const row = await this.prisma.category.update({
+        where: { id },
+        data,
+      });
+
+      return this.toICategory(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new ConflictException('DUPLICATE_CATEGORY_NAME');
+        }
+        if (error.code === 'P2025') {
+          throw new NotFoundException('CATEGORY_NOT_FOUND');
+        }
       }
       throw error;
     }

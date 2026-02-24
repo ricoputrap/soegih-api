@@ -1,4 +1,5 @@
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 
 export enum EnumCategorySortKey {
   NAME = 'name',
@@ -57,7 +58,16 @@ export interface CreateCategoryResponse {
   };
 }
 
+export interface UpdateCategoryResponse {
+  data: ICategory;
+  meta: {
+    timestamp: string;
+    version: string;
+  };
+}
+
 export interface ICategoryService {
   getAll(params: IGetAllCategoriesParams): Promise<GetAllCategoriesResponse>;
   create(data: CreateCategoryDto): Promise<CreateCategoryResponse>;
+  update(id: string, data: UpdateCategoryDto): Promise<UpdateCategoryResponse>;
 }

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CategoriesController } from './categories.controller';
 import { CategoriesService } from './categories.service';
 import {
@@ -8,8 +8,10 @@ import {
   EnumCategorySortOrder,
   GetAllCategoriesResponse,
   CreateCategoryResponse,
+  UpdateCategoryResponse,
 } from './categories.types';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 
 describe('CategoriesController', () => {
   let controller: CategoriesController;
@@ -17,6 +19,7 @@ describe('CategoriesController', () => {
   let mockCategoriesService: {
     getAll: jest.Mock;
     create: jest.Mock;
+    update: jest.Mock;
   };
 
   // Shared timestamp for consistent mock data
@@ -61,6 +64,7 @@ describe('CategoriesController', () => {
     mockCategoriesService = {
       getAll: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     };
 
     // Create testing module with mocked service (no real DB connection)
@@ -314,6 +318,62 @@ describe('CategoriesController', () => {
 
       expect(result).toBeDefined();
       expect(mockCategoriesService.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    const mockUpdateResponse: UpdateCategoryResponse = {
+      data: { ...mockCategory, name: 'Updated Utilities' },
+      meta: {
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+      },
+    };
+
+    it('should call service with correct id and body', async () => {
+      const updateDto: UpdateCategoryDto = { name: 'Updated Utilities' };
+      mockCategoriesService.update.mockResolvedValue(mockUpdateResponse);
+
+      const result = await controller.update('1', updateDto);
+
+      expect(result).toEqual(mockUpdateResponse);
+      expect(mockCategoriesService.update).toHaveBeenCalledWith('1', updateDto);
+    });
+
+    it('should return 200 with updated category', async () => {
+      const updateDto: UpdateCategoryDto = {
+        name: 'Updated Name',
+        description: 'Updated description',
+      };
+      mockCategoriesService.update.mockResolvedValue(mockUpdateResponse);
+
+      const result = await controller.update('1', updateDto);
+
+      expect(result).toBeDefined();
+      expect(result.data).toBeDefined();
+      expect(result.meta.version).toBe('1.0');
+    });
+
+    it('should propagate NotFoundException from service', async () => {
+      const updateDto: UpdateCategoryDto = { name: 'Test' };
+      mockCategoriesService.update.mockRejectedValue(
+        new NotFoundException('CATEGORY_NOT_FOUND'),
+      );
+
+      await expect(controller.update('nonexistent', updateDto)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should propagate ConflictException from service', async () => {
+      const updateDto: UpdateCategoryDto = { name: 'Salary' };
+      mockCategoriesService.update.mockRejectedValue(
+        new ConflictException('DUPLICATE_CATEGORY_NAME'),
+      );
+
+      await expect(controller.update('1', updateDto)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });

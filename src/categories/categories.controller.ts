@@ -14,10 +14,12 @@ import {
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { GetAllCategoriesDto } from './dto/get-category.dto';
 import {
   GetAllCategoriesResponse,
   CreateCategoryResponse,
+  UpdateCategoryResponse,
 } from './categories.types';
 
 @Controller('api/v1/categories')
@@ -51,9 +53,19 @@ export class CategoriesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string) {
-    console.log('===== EDIT ID:', id);
-    return { id: 4, name: 'Home & Garden' };
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update a category by ID' })
+  @ApiResponse({ status: 200, description: 'Category updated successfully' })
+  @ApiResponse({ status: 404, description: 'Category not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Category with same name and type already exists',
+  })
+  async update(
+    @Param('id') id: string,
+    @Body(ValidationPipe) body: UpdateCategoryDto,
+  ): Promise<UpdateCategoryResponse> {
+    return this.categoryService.update(id, body);
   }
 
   @Delete()

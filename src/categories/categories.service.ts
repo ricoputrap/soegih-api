@@ -6,8 +6,10 @@ import {
   IGetAllCategoriesParams,
   GetAllCategoriesResponse,
   CreateCategoryResponse,
+  UpdateCategoryResponse,
 } from './categories.types.js';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
+import { UpdateCategoryDto } from './dto/update-category.dto.js';
 import type {
   ICategoryRepository,
   CategoryWhereParams,
@@ -95,6 +97,23 @@ export class CategoriesService implements ICategoryService {
       description: data.description,
       type: data.type,
     });
+
+    const timestamp = new Date().toISOString();
+
+    return {
+      data: category,
+      meta: {
+        timestamp,
+        version: '1.0',
+      },
+    };
+  }
+
+  async update(
+    id: string,
+    data: UpdateCategoryDto,
+  ): Promise<UpdateCategoryResponse> {
+    const category = await this.categoryRepository.update(id, data);
 
     const timestamp = new Date().toISOString();
 
