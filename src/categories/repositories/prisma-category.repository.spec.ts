@@ -55,9 +55,7 @@ describe('PrismaCategoryRepository', () => {
       ],
     }).compile();
 
-    repository = module.get<PrismaCategoryRepository>(
-      PrismaCategoryRepository,
-    );
+    repository = module.get<PrismaCategoryRepository>(PrismaCategoryRepository);
   });
 
   describe('findMany', () => {
@@ -292,7 +290,8 @@ describe('PrismaCategoryRepository', () => {
     it('should re-throw non-P2002 Prisma errors', async () => {
       const prismaError = {
         code: 'P2025',
-        message: 'An operation failed because it depends on one or more records that were required but not found.',
+        message:
+          'An operation failed because it depends on one or more records that were required but not found.',
       };
       mockPrismaService.category.create.mockRejectedValue(prismaError);
 
@@ -371,13 +370,13 @@ describe('PrismaCategoryRepository', () => {
         ...mockPrismaCategory,
         description: 'Test Description with Special Chars: !@#$%',
       };
-      mockPrismaService.category.findMany.mockResolvedValue([
-        categoryWithDesc,
-      ]);
+      mockPrismaService.category.findMany.mockResolvedValue([categoryWithDesc]);
 
       const result = await repository.findMany({});
 
-      expect(result[0].description).toBe('Test Description with Special Chars: !@#$%');
+      expect(result[0].description).toBe(
+        'Test Description with Special Chars: !@#$%',
+      );
     });
 
     it('should coerce empty string description to empty string (not null)', async () => {

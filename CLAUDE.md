@@ -42,17 +42,57 @@ Every feature follows this structure — create the files, then import the modul
 ```
 src/
   <feature>/
-    <feature>.module.ts      # declares controller + service, exports service if needed
-    <feature>.controller.ts  # HTTP routes, delegates to service
-    <feature>.service.ts     # business logic, injects PrismaService
-    <feature>.dto.ts         # request/response shapes (used by Swagger + validation)
+    <feature>.module.ts           # declares controller + service + repository, exports service if needed
+    <feature>.controller.ts       # HTTP routes, delegates to service
+    <feature>.service.ts          # business logic, injects repository (NOT PrismaService)
+    <feature>.service.spec.ts     # tests mocking the repository interface
+    <feature>.dto.ts              # request/response shapes (used by Swagger + validation)
+    <feature>.types.ts            # interfaces and enums
+    repositories/
+      <feature>.repository.interface.ts        # ORM-agnostic interface and types
+      prisma-<feature>.repository.ts          # Prisma implementation (only place that imports Prisma)
+      prisma-<feature>.repository.spec.ts     # tests for Prisma interactions
 ```
+
+**Key principle:** Services depend on repository interfaces, not Prisma directly. This allows swapping ORM implementations without touching service logic.
 
 ### Database layer (`src/prisma/`)
 
 `PrismaModule` is `@Global()` — import it once in `AppModule` and `PrismaService` is available everywhere via constructor injection. Never import `PrismaModule` again in feature modules.
 
 `PrismaService` extends `PrismaClient` directly, so all Prisma model accessors (`prisma.wallet`, `prisma.category`, etc.) are available on the injected service instance.
+
+### Repository Pattern
+
+Services should NOT import `PrismaService` directly. Instead, use the Repository Pattern:
+
+1. **Create repository interface** (`<feature>.repository.interface.ts`):
+   - Define ORM-agnostic input/output types
+   - Export `I<Feature>Repository` interface with methods like `findMany()`, `count()`, `create()`
+   - Export `<FEATURE>_REPOSITORY_TOKEN = Symbol('<FEATURE>_REPOSITORY')`
+
+2. **Implement with Prisma** (`prisma-<feature>.repository.ts`):
+   - `@Injectable()` class implementing the interface
+   - Only file in the feature that imports Prisma
+   - Handle ORM-specific errors (e.g., P2002 → `ConflictException`)
+   - Transform Prisma rows to domain types in a helper method (e.g., `toIEntity()`)
+
+3. **Inject in service**:
+   - Remove `PrismaService` injection
+   - Add `@Inject(REPOSITORY_TOKEN) private readonly repository: IRepository`
+   - Use `import type` for interface imports (required by `emitDecoratorMetadata`)
+
+4. **Register in module**:
+   ```ts
+   {
+     provide: CATEGORY_REPOSITORY_TOKEN,
+     useClass: PrismaCategoryRepository,
+   }
+   ```
+
+5. **Test both layers**:
+   - Service tests mock `IRepository` directly
+   - Repository tests verify Prisma interactions and data transformation
 
 ### Prisma 7 specifics
 
@@ -77,6 +117,15 @@ All relative imports use `.js` extensions — required by `module: "nodenext"` i
 
 ```ts
 import { PrismaService } from './prisma/prisma.service.js';
+```
+
+**Exception for type imports:** Use `import type` for interface-only imports in files with `@Injectable()` decorators (required by `isolatedModules` + `emitDecoratorMetadata`):
+
+```ts
+// ✅ For types/interfaces
+import type { IRepository, RepositoryParams } from './repository.interface.js';
+// ✅ For values and classes
+import { REPOSITORY_TOKEN } from './repository.interface.js';
 ```
 
 **Note for tests:** In `.spec.ts` files, omit `.js` extensions since Jest runs directly on TypeScript (not compiled code). Jest's `moduleNameMapper` handles the mapping automatically.
