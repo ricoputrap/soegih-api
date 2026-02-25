@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   EnumCategorySortKey,
   EnumCategorySortOrder,
@@ -7,6 +7,7 @@ import {
   GetAllCategoriesResponse,
   CreateCategoryResponse,
   UpdateCategoryResponse,
+  DeleteSingleCategoryResponse,
 } from './categories.types.js';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
 import { UpdateCategoryDto } from './dto/update-category.dto.js';
@@ -121,6 +122,59 @@ export class CategoriesService implements ICategoryService {
       data: category,
       meta: {
         timestamp,
+        version: '1.0',
+      },
+    };
+  }
+
+  async deleteSingle(
+    id: string,
+    confirm: boolean,
+  ): Promise<DeleteSingleCategoryResponse> {
+    const category = await this.categoryRepository.findById(id);
+
+    if (!category || category.deleted_at != null) {
+      throw new NotFoundException('CATEGORY_NOT_FOUND');
+    }
+
+    const transactionCount =
+      await this.categoryRepository.countTransactions(id);
+
+    if (!confirm && transactionCount > 0) {
+      return {
+        status: 'CONFIRMATION_REQUIRED',
+        data: {
+          id: category.id,
+          name: category.name,
+          transaction_count: transactionCount,
+          warning: `This category is used in ${transactionCount} transaction(s). Pass confirm=true to archive it.`,
+        },
+        confirmation_required: true,
+        meta: {
+          timestamp: new Date().toISOString(),
+          version: '1.0',
+        },
+      };
+    }
+
+    const now = new Date();
+    const archivedName = `${category.name} [ARCHIVED ${now.toISOString()}]`;
+    await this.categoryRepository.softDelete(id, {
+      name: archivedName,
+      deleted_at: now,
+    });
+
+    return {
+      status: 'DELETED',
+      data: {
+        id: category.id,
+        name: archivedName,
+        deleted_at: now,
+        ...(confirm && { transaction_count_archived: transactionCount }),
+      },
+      confirmation_required: false,
+      meta: {
+        timestamp: now.toISOString(),
         version: '1.0',
       },
     };

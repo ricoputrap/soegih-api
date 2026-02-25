@@ -33,9 +33,17 @@ export interface CategoryUpdateParams {
   description?: string;
 }
 
+export interface CategorySoftDeleteParams {
+  name: string;
+  deleted_at: Date;
+}
+
 export interface ICategoryRepository {
   findMany(params: CategoryFindManyParams): Promise<ICategory[]>;
   count(where?: CategoryWhereParams): Promise<number>;
   create(data: CategoryCreateParams): Promise<ICategory>;
   update(id: string, data: CategoryUpdateParams): Promise<ICategory>;
+  findById(id: string): Promise<ICategory | null>;
+  countTransactions(categoryId: string): Promise<number>;
+  softDelete(id: string, data: CategorySoftDeleteParams): Promise<ICategory>;
 }

@@ -20,6 +20,7 @@ import {
   GetAllCategoriesResponse,
   CreateCategoryResponse,
   UpdateCategoryResponse,
+  DeleteSingleCategoryResponse,
 } from './categories.types';
 
 @Controller('api/v1/categories')
@@ -68,13 +69,26 @@ export class CategoriesController {
     return this.categoryService.update(id, body);
   }
 
-  @Delete()
-  delete() {
-    return { id: 4, name: 'Home & Garden' };
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a category by ID (two-phase confirmation)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Category deleted or confirmation required',
+  })
+  @ApiResponse({ status: 404, description: 'Category not found' })
+  async deleteSingle(
+    @Param('id') id: string,
+    @Query('confirm') confirm?: string,
+  ): Promise<DeleteSingleCategoryResponse> {
+    const confirmed = confirm === 'true';
+    return this.categoryService.deleteSingle(id, confirmed);
   }
 
   @Delete()
+  @HttpCode(HttpStatus.OK)
   deleteMultiple() {
+    // Placeholder for bulk delete (future implementation)
     return { id: 4, name: 'Home & Garden' };
   }
 }

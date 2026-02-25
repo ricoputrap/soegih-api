@@ -46,6 +46,9 @@ describe('CategoriesService', () => {
       count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      findById: jest.fn(),
+      countTransactions: jest.fn(),
+      softDelete: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -421,6 +424,115 @@ describe('CategoriesService', () => {
       await expect(service.update('1', { name: 'Salary' })).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('deleteSingle', () => {
+    it('should throw NotFoundException when category does not exist', async () => {
+      mockRepository.findById.mockResolvedValue(null);
+
+      await expect(service.deleteSingle('nonexistent', false)).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.deleteSingle('nonexistent', false)).rejects.toThrow(
+        'CATEGORY_NOT_FOUND',
+      );
+    });
+
+    it('should throw NotFoundException when category is already soft-deleted', async () => {
+      mockRepository.findById.mockResolvedValue({
+        ...mockCategory,
+        deleted_at: mockTimestamp,
+      });
+
+      await expect(service.deleteSingle('1', false)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return CONFIRMATION_REQUIRED when category is used in transactions and confirm=false', async () => {
+      mockRepository.findById.mockResolvedValue(mockCategory);
+      mockRepository.countTransactions.mockResolvedValue(3);
+
+      const result = await service.deleteSingle('1', false);
+
+      expect(result.status).toBe('CONFIRMATION_REQUIRED');
+      expect(result.confirmation_required).toBe(true);
+      expect(result.data.transaction_count).toBe(3);
+      expect(result.data.warning).toBeDefined();
+      expect(mockRepository.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('should delete immediately when category has no transactions and confirm=false', async () => {
+      mockRepository.findById.mockResolvedValue(mockCategory);
+      mockRepository.countTransactions.mockResolvedValue(0);
+      const archivedCategory = {
+        ...mockCategory,
+        name: 'Utilities [ARCHIVED ...]',
+        deleted_at: new Date(),
+      };
+      mockRepository.softDelete.mockResolvedValue(archivedCategory);
+
+      const result = await service.deleteSingle('1', false);
+
+      expect(result.status).toBe('DELETED');
+      expect(result.confirmation_required).toBe(false);
+      expect(result.data.transaction_count_archived).toBeUndefined();
+      expect(mockRepository.softDelete).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({ name: expect.stringContaining('[ARCHIVED') }),
+      );
+    });
+
+    it('should delete and include transaction_count_archived when confirm=true', async () => {
+      mockRepository.findById.mockResolvedValue(mockCategory);
+      mockRepository.countTransactions.mockResolvedValue(5);
+      const archivedCategory = {
+        ...mockCategory,
+        name: 'Utilities [ARCHIVED ...]',
+        deleted_at: new Date(),
+      };
+      mockRepository.softDelete.mockResolvedValue(archivedCategory);
+
+      const result = await service.deleteSingle('1', true);
+
+      expect(result.status).toBe('DELETED');
+      expect(result.confirmation_required).toBe(false);
+      expect(result.data.transaction_count_archived).toBe(5);
+    });
+
+    it('should include [ARCHIVED ...] suffix in archived name', async () => {
+      mockRepository.findById.mockResolvedValue(mockCategory);
+      mockRepository.countTransactions.mockResolvedValue(0);
+      mockRepository.softDelete.mockResolvedValue({
+        ...mockCategory,
+        name: 'Utilities [ARCHIVED 2024-01-01T00:00:00.000Z]',
+        deleted_at: new Date(),
+      });
+
+      await service.deleteSingle('1', false);
+
+      expect(mockRepository.softDelete).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          name: expect.stringMatching(/^Utilities \[ARCHIVED .+\]$/),
+          deleted_at: expect.any(Date),
+        }),
+      );
+    });
+
+    it('should include metadata in response', async () => {
+      mockRepository.findById.mockResolvedValue(mockCategory);
+      mockRepository.countTransactions.mockResolvedValue(0);
+      mockRepository.softDelete.mockResolvedValue({
+        ...mockCategory,
+        deleted_at: new Date(),
+      });
+
+      const result = await service.deleteSingle('1', false);
+
+      expect(result.meta.version).toBe('1.0');
+      expect(typeof result.meta.timestamp).toBe('string');
     });
   });
 });

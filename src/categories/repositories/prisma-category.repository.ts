@@ -13,6 +13,7 @@ import type {
   CategoryCreateParams,
   CategoryUpdateParams,
   CategoryWhereParams,
+  CategorySoftDeleteParams,
 } from './category.repository.interface.js';
 
 @Injectable()
@@ -74,6 +75,42 @@ export class PrismaCategoryRepository implements ICategoryRepository {
         if (error.code === 'P2025') {
           throw new NotFoundException('CATEGORY_NOT_FOUND');
         }
+      }
+      throw error;
+    }
+  }
+
+  async findById(id: string): Promise<ICategory | null> {
+    const row = await this.prisma.category.findUnique({ where: { id } });
+    if (!row) return null;
+    return this.toICategory(row);
+  }
+
+  async countTransactions(categoryId: string): Promise<number> {
+    return this.prisma.transactionEvent.count({
+      where: { category_id: categoryId, deleted_at: null },
+    });
+  }
+
+  async softDelete(
+    id: string,
+    data: CategorySoftDeleteParams,
+  ): Promise<ICategory> {
+    try {
+      const row = await this.prisma.category.update({
+        where: { id },
+        data: {
+          name: data.name,
+          deleted_at: data.deleted_at,
+        },
+      });
+      return this.toICategory(row);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('CATEGORY_NOT_FOUND');
       }
       throw error;
     }

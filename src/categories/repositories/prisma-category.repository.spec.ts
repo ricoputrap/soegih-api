@@ -13,6 +13,10 @@ describe('PrismaCategoryRepository', () => {
       count: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      findUnique: jest.Mock;
+    };
+    transactionEvent: {
+      count: jest.Mock;
     };
   };
 
@@ -44,6 +48,10 @@ describe('PrismaCategoryRepository', () => {
         count: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        findUnique: jest.fn(),
+      },
+      transactionEvent: {
+        count: jest.fn(),
       },
     };
 
@@ -435,6 +443,125 @@ describe('PrismaCategoryRepository', () => {
       await expect(repository.update('1', { name: 'Test' })).rejects.toEqual(
         error,
       );
+    });
+  });
+
+  describe('findById', () => {
+    it('should return transformed category when found', async () => {
+      mockPrismaService.category.findUnique.mockResolvedValue(
+        mockPrismaCategory,
+      );
+
+      const result = await repository.findById('1');
+
+      expect(result).toEqual({
+        id: '1',
+        name: 'Utilities',
+        type: EnumCategoryType.EXPENSE,
+        description: 'Electricity, Water, Gas',
+        created_at: mockTimestamp,
+        updated_at: mockTimestamp,
+        deleted_at: null,
+      });
+      expect(mockPrismaService.category.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+      });
+    });
+
+    it('should return null when category not found', async () => {
+      mockPrismaService.category.findUnique.mockResolvedValue(null);
+
+      const result = await repository.findById('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('countTransactions', () => {
+    it('should return count of active transactions for a category', async () => {
+      mockPrismaService.transactionEvent.count.mockResolvedValue(5);
+
+      const result = await repository.countTransactions('1');
+
+      expect(result).toBe(5);
+      expect(mockPrismaService.transactionEvent.count).toHaveBeenCalledWith({
+        where: { category_id: '1', deleted_at: null },
+      });
+    });
+
+    it('should return zero when no transactions found', async () => {
+      mockPrismaService.transactionEvent.count.mockResolvedValue(0);
+
+      const result = await repository.countTransactions('1');
+
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('softDelete', () => {
+    it('should soft-delete category and return updated record', async () => {
+      const deletedAt = new Date('2024-06-01T00:00:00Z');
+      const archivedName = 'Utilities [ARCHIVED 2024-06-01T00:00:00.000Z]';
+      const updatedRow = {
+        ...mockPrismaCategory,
+        name: archivedName,
+        deleted_at: deletedAt,
+      };
+      mockPrismaService.category.update.mockResolvedValue(updatedRow);
+
+      const result = await repository.softDelete('1', {
+        name: archivedName,
+        deleted_at: deletedAt,
+      });
+
+      expect(result.name).toBe(archivedName);
+      expect(result.deleted_at).toEqual(deletedAt);
+      expect(mockPrismaService.category.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: { name: archivedName, deleted_at: deletedAt },
+      });
+    });
+
+    it('should throw NotFoundException on P2025', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'An operation failed because it depends on one or more records that were required but not found.',
+        { code: 'P2025', clientVersion: '7.4.1' },
+      );
+      mockPrismaService.category.update.mockRejectedValue(prismaError);
+
+      await expect(
+        repository.softDelete('nonexistent', {
+          name: 'Test [ARCHIVED ...]',
+          deleted_at: new Date(),
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException with CATEGORY_NOT_FOUND message on P2025', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'An operation failed because it depends on one or more records that were required but not found.',
+        { code: 'P2025', clientVersion: '7.4.1' },
+      );
+      mockPrismaService.category.update.mockRejectedValue(prismaError);
+
+      await expect(
+        repository.softDelete('nonexistent', {
+          name: 'Test [ARCHIVED ...]',
+          deleted_at: new Date(),
+        }),
+      ).rejects.toThrow('CATEGORY_NOT_FOUND');
+    });
+
+    it('should re-throw non-P2025 errors', async () => {
+      const error = new Error('Database connection failed');
+      mockPrismaService.category.update.mockRejectedValue(error);
+
+      await expect(
+        repository.softDelete('1', {
+          name: 'Test [ARCHIVED ...]',
+          deleted_at: new Date(),
+        }),
+      ).rejects.toEqual(error);
     });
   });
 

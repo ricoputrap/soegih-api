@@ -66,8 +66,31 @@ export interface UpdateCategoryResponse {
   };
 }
 
+export interface DeleteSingleCategoryData {
+  id: string;
+  name: string;
+  transaction_count?: number;
+  warning?: string;
+  deleted_at?: Date | null;
+  transaction_count_archived?: number;
+}
+
+export interface DeleteSingleCategoryResponse {
+  status: 'DELETED' | 'CONFIRMATION_REQUIRED';
+  data: DeleteSingleCategoryData;
+  confirmation_required: boolean;
+  meta: {
+    timestamp: string;
+    version: string;
+  };
+}
+
 export interface ICategoryService {
   getAll(params: IGetAllCategoriesParams): Promise<GetAllCategoriesResponse>;
   create(data: CreateCategoryDto): Promise<CreateCategoryResponse>;
   update(id: string, data: UpdateCategoryDto): Promise<UpdateCategoryResponse>;
+  deleteSingle(
+    id: string,
+    confirm: boolean,
+  ): Promise<DeleteSingleCategoryResponse>;
 }

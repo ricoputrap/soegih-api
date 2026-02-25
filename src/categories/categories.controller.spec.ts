@@ -9,6 +9,7 @@ import {
   GetAllCategoriesResponse,
   CreateCategoryResponse,
   UpdateCategoryResponse,
+  DeleteSingleCategoryResponse,
 } from './categories.types';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -20,6 +21,7 @@ describe('CategoriesController', () => {
     getAll: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    deleteSingle: jest.Mock;
   };
 
   // Shared timestamp for consistent mock data
@@ -65,6 +67,7 @@ describe('CategoriesController', () => {
       getAll: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      deleteSingle: jest.fn(),
     };
 
     // Create testing module with mocked service (no real DB connection)
@@ -374,6 +377,94 @@ describe('CategoriesController', () => {
       await expect(controller.update('1', updateDto)).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('deleteSingle', () => {
+    const mockDeletedResponse: DeleteSingleCategoryResponse = {
+      status: 'DELETED',
+      data: {
+        id: '1',
+        name: 'Utilities [ARCHIVED 2024-01-01T00:00:00.000Z]',
+        deleted_at: mockTimestamp,
+      },
+      confirmation_required: false,
+      meta: {
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+      },
+    };
+
+    const mockConfirmationRequiredResponse: DeleteSingleCategoryResponse = {
+      status: 'CONFIRMATION_REQUIRED',
+      data: {
+        id: '1',
+        name: 'Utilities',
+        transaction_count: 3,
+        warning: 'This category is used in 3 transaction(s). Pass confirm=true to archive it.',
+      },
+      confirmation_required: true,
+      meta: {
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+      },
+    };
+
+    it('should call service.deleteSingle with id and confirm=false when no confirm param', async () => {
+      mockCategoriesService.deleteSingle.mockResolvedValue(mockDeletedResponse);
+
+      const result = await controller.deleteSingle('1');
+
+      expect(result).toEqual(mockDeletedResponse);
+      expect(mockCategoriesService.deleteSingle).toHaveBeenCalledWith('1', false);
+    });
+
+    it('should call service.deleteSingle with confirm=false when confirm="false"', async () => {
+      mockCategoriesService.deleteSingle.mockResolvedValue(mockConfirmationRequiredResponse);
+
+      const result = await controller.deleteSingle('1', 'false');
+
+      expect(result).toEqual(mockConfirmationRequiredResponse);
+      expect(mockCategoriesService.deleteSingle).toHaveBeenCalledWith('1', false);
+    });
+
+    it('should call service.deleteSingle with confirm=true when confirm="true"', async () => {
+      mockCategoriesService.deleteSingle.mockResolvedValue(mockDeletedResponse);
+
+      const result = await controller.deleteSingle('1', 'true');
+
+      expect(result).toEqual(mockDeletedResponse);
+      expect(mockCategoriesService.deleteSingle).toHaveBeenCalledWith('1', true);
+    });
+
+    it('should propagate NotFoundException from service', async () => {
+      mockCategoriesService.deleteSingle.mockRejectedValue(
+        new NotFoundException('CATEGORY_NOT_FOUND'),
+      );
+
+      await expect(controller.deleteSingle('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return CONFIRMATION_REQUIRED response shape', async () => {
+      mockCategoriesService.deleteSingle.mockResolvedValue(mockConfirmationRequiredResponse);
+
+      const result = await controller.deleteSingle('1', 'false');
+
+      expect(result.status).toBe('CONFIRMATION_REQUIRED');
+      expect(result.confirmation_required).toBe(true);
+      expect(result.data.transaction_count).toBe(3);
+    });
+
+    it('should return DELETED response shape', async () => {
+      mockCategoriesService.deleteSingle.mockResolvedValue(mockDeletedResponse);
+
+      const result = await controller.deleteSingle('1', 'true');
+
+      expect(result.status).toBe('DELETED');
+      expect(result.confirmation_required).toBe(false);
+      expect(result.data.deleted_at).toBeDefined();
     });
   });
 });
