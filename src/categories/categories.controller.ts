@@ -11,7 +11,7 @@ import {
   Query,
   ValidationPipe,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -21,6 +21,9 @@ import {
   CreateCategoryResponse,
   UpdateCategoryResponse,
   DeleteSingleCategoryResponse,
+  EnumCategorySortKey,
+  EnumCategorySortOrder,
+  EnumCategoryType,
 } from './categories.types';
 
 @Controller('api/v1/categories')
@@ -29,6 +32,13 @@ export class CategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all categories with filtering and pagination' })
+  @ApiQuery({ name: 'sortKey', required: false, enum: EnumCategorySortKey })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: EnumCategorySortOrder })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiQuery({ name: 'offset', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'type', required: false, enum: EnumCategoryType })
+  @ApiQuery({ name: 'include_deleted', required: false, type: Boolean })
   @ApiResponse({
     status: 200,
     description: 'List of categories retrieved successfully',
@@ -56,6 +66,7 @@ export class CategoriesController {
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Update a category by ID' })
+  @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Category updated successfully' })
   @ApiResponse({ status: 404, description: 'Category not found' })
   @ApiResponse({
@@ -72,6 +83,8 @@ export class CategoriesController {
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a category by ID (two-phase confirmation)' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiQuery({ name: 'confirm', required: false, type: Boolean })
   @ApiResponse({
     status: 200,
     description: 'Category deleted or confirmation required',

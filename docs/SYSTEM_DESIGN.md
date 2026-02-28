@@ -860,10 +860,11 @@ All successful API responses follow this standard format:
 **GET /api/v1/categories**
 
 **Query Parameters:**
-- `limit`: Number of items per page (default: 10, max: 100)
-- `offset`: Number of items to skip (default: 0)
+- `limit`: Number of items per page (min: 1, max: 100)
+- `offset`: Number of items to skip (min: 0)
 - `type`: Filter by type (`expense` | `income`)
-- `sort`: Sort by field (e.g., `name:asc`, `created_at:desc`)
+- `sortKey`: Field to sort by (`name`)
+- `sortOrder`: Sort direction (`asc` | `desc`)
 - `search`: Search by name (partial match)
 - `include_deleted`: Include archived categories (`true` | `false`, default: false)
 
