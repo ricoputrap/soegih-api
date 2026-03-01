@@ -581,7 +581,7 @@ describe('CategoriesService (RED Phase - Tests FAIL until implemented)', () => {
       const archivedName = service.archiveName(category);
 
       // Assert
-      expect(archivedName).toMatch(/\[\d+\]/); // Timestamp in brackets
+      expect(archivedName).toMatch(/ARCHIVED \d+/); // Timestamp after ARCHIVED
     });
   });
 

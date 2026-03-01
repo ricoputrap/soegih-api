@@ -91,7 +91,7 @@ export class PrismaCategoriesRepository implements ICategoriesRepository {
         data: {
           user_id: userId,
           name: data.name,
-          type: data.type as Prisma.CategoryType,
+          type: data.type,
           description: data.description ?? null,
         },
       });
@@ -125,7 +125,7 @@ export class PrismaCategoriesRepository implements ICategoriesRepository {
         updateData.name = data.name;
       }
       if (data.type !== undefined) {
-        updateData.type = data.type as Prisma.CategoryType;
+        updateData.type = data.type;
       }
       if (data.description !== undefined) {
         updateData.description = data.description;

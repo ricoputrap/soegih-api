@@ -10,6 +10,7 @@ import type {
   DeleteResponse,
   BulkDeleteResponse,
   ConfirmationRequiredResponse,
+  BulkConfirmationRequiredResponse,
 } from './categories.types.js';
 
 @Injectable()
@@ -110,7 +111,7 @@ export class CategoriesService {
     userId: string,
     ids: string[],
     confirm: boolean,
-  ): Promise<BulkDeleteResponse | ConfirmationRequiredResponse> {
+  ): Promise<BulkDeleteResponse | BulkConfirmationRequiredResponse> {
     if (!ids || ids.length === 0) {
       throw new Error('At least one category ID is required');
     }
@@ -150,7 +151,12 @@ export class CategoriesService {
 
     // Proceed with bulk soft delete
     const timestamp = Math.floor(Date.now() / 1000);
-    const deletedItems = [];
+    const deletedItems: Array<{
+      id: string;
+      name: string;
+      deleted_at: number;
+      transaction_count_archived: number;
+    }> = [];
     for (const id of ids) {
       const archivedName = `[ARCHIVED ${timestamp}]`;
       const deletedCategory = await this.repository.softDelete(id, userId, archivedName);

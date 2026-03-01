@@ -54,7 +54,7 @@ export interface BulkDeleteResponse {
 }
 
 /**
- * Confirmation required response
+ * Confirmation required response for single delete
  * Returned when user attempts to delete category with transactions
  * and hasn't set confirm=true
  */
@@ -65,6 +65,26 @@ export interface ConfirmationRequiredResponse {
     name: string;
     transaction_count: number;
     message: string;
+  };
+  confirmation_required: true;
+}
+
+/**
+ * Confirmation required response for bulk delete
+ * Returned when user attempts to delete multiple categories
+ * and any have transactions without confirm=true
+ */
+export interface BulkConfirmationRequiredResponse {
+  status: 'CONFIRMATION_REQUIRED';
+  data: {
+    items_in_use: Array<{
+      id: string;
+      transaction_count: number;
+    }>;
+    items_safe_to_delete: Array<{
+      id: string;
+      transaction_count: number;
+    }>;
   };
   confirmation_required: true;
 }
