@@ -1,30 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { IUserRepository, USER_REPOSITORY_TOKEN } from './repositories/user.repository.interface.js';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let mockAuthService: {
-    register: jest.Mock;
-    login: jest.Mock;
-    refresh: jest.Mock;
-  };
+  let mockUserRepository: jest.Mocked<IUserRepository>;
 
   beforeEach(async () => {
-    // Create mock service with jest.Mock for each method
-    mockAuthService = {
-      register: jest.fn(),
-      login: jest.fn(),
-      refresh: jest.fn(),
+    // Create mock REPOSITORY (dependency), not the service itself
+    mockUserRepository = {
+      findByUsername: jest.fn(),
+      create: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        AuthService, // ← Real service (NOT mocked)
         {
-          provide: AuthService,
-          useValue: mockAuthService,
+          provide: USER_REPOSITORY_TOKEN,
+          useValue: mockUserRepository, // ← Mock the dependency
         },
       ],
     }).compile();
@@ -39,18 +36,16 @@ describe('AuthService', () => {
         username: 'john_doe',
         password: 'SecurePass123!',
       };
-      const mockResponse = {
-        user: {
-          id: 'user-123',
-          username: 'john_doe',
-          created_at: 1709299445,
-        },
-        tokens: {
-          accessToken: 'access_token_jwt',
-          refreshToken: 'refresh_token_jwt',
-        },
+      const newUser = {
+        id: 'user-123',
+        username: 'john_doe',
+        created_at: new Date(),
+        updated_at: new Date(),
       };
-      mockAuthService.register.mockResolvedValue(mockResponse);
+      // Repository: user doesn't exist yet
+      mockUserRepository.findByUsername.mockResolvedValue(null);
+      // Repository: create user
+      mockUserRepository.create.mockResolvedValue(newUser);
 
       // Act
       const result = await service.register(registerDto);
@@ -58,13 +53,15 @@ describe('AuthService', () => {
       // Assert
       expect(result).toBeDefined();
       expect(result.user).toBeDefined();
-      expect(result.user.id).toBeDefined();
+      expect(result.user.id).toBe('user-123');
       expect(result.user.username).toBe('john_doe');
-      expect(result.user.created_at).toBeDefined();
       expect(result.tokens).toBeDefined();
       expect(result.tokens.accessToken).toBeDefined();
       expect(result.tokens.refreshToken).toBeDefined();
-      expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
+      // Verify repository was called to check username uniqueness
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('john_doe');
+      // Verify repository was called to create user
+      expect(mockUserRepository.create).toHaveBeenCalled();
     });
 
     it('should throw ConflictException if username already exists', async () => {
@@ -73,15 +70,21 @@ describe('AuthService', () => {
         username: 'existing_user',
         password: 'SecurePass123!',
       };
-      mockAuthService.register.mockRejectedValue(
-        new ConflictException('Username already exists'),
-      );
+      // Repository: user already exists
+      mockUserRepository.findByUsername.mockResolvedValue({
+        id: 'user-existing',
+        username: 'existing_user',
+        password: 'hashed_password',
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
 
       // Act & Assert
-      await expect(service.register(registerDto)).rejects.toThrow(
-        ConflictException,
-      );
-      expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
+      await expect(service.register(registerDto)).rejects.toThrow(ConflictException);
+      // Verify repository was called to check username
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('existing_user');
+      // Verify repository.create was NOT called
+      expect(mockUserRepository.create).not.toHaveBeenCalled();
     });
 
     it('should hash password and not store plaintext', async () => {
@@ -90,25 +93,25 @@ describe('AuthService', () => {
         username: 'test_user',
         password: 'SecurePass123!',
       };
-      const mockResponse = {
-        user: {
-          id: 'user-456',
-          username: 'test_user',
-          created_at: 1709299445,
-        },
-        tokens: {
-          accessToken: 'access_token_jwt',
-          refreshToken: 'refresh_token_jwt',
-        },
+      const newUser = {
+        id: 'user-456',
+        username: 'test_user',
+        created_at: new Date(),
+        updated_at: new Date(),
       };
-      mockAuthService.register.mockResolvedValue(mockResponse);
+      mockUserRepository.findByUsername.mockResolvedValue(null);
+      mockUserRepository.create.mockResolvedValue(newUser);
 
       // Act
       const result = await service.register(registerDto);
 
-      // Assert (password should never be in response)
+      // Assert - password should never be in response
       expect(result.user).not.toHaveProperty('password');
-      expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
+      // Verify create was called with hashed password (not plaintext)
+      expect(mockUserRepository.create).toHaveBeenCalled();
+      const createCall = mockUserRepository.create.mock.calls[0][0];
+      // Password should be hashed (won't match plaintext)
+      expect(createCall.password).not.toBe('SecurePass123!');
     });
 
     it('should generate both access and refresh tokens with correct expiration', async () => {
@@ -117,28 +120,25 @@ describe('AuthService', () => {
         username: 'test_user',
         password: 'SecurePass123!',
       };
-      const mockResponse = {
-        user: {
-          id: 'user-789',
-          username: 'test_user',
-          created_at: 1709299445,
-        },
-        tokens: {
-          accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-          refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
+      const newUser = {
+        id: 'user-789',
+        username: 'test_user',
+        created_at: new Date(),
+        updated_at: new Date(),
       };
-      mockAuthService.register.mockResolvedValue(mockResponse);
+      mockUserRepository.findByUsername.mockResolvedValue(null);
+      mockUserRepository.create.mockResolvedValue(newUser);
 
       // Act
       const result = await service.register(registerDto);
 
-      // Assert (tokens should be valid JWT-like strings)
+      // Assert - tokens should be valid JWT-like strings
       expect(result.tokens.accessToken).toBeTruthy();
       expect(result.tokens.refreshToken).toBeTruthy();
       expect(typeof result.tokens.accessToken).toBe('string');
       expect(typeof result.tokens.refreshToken).toBe('string');
-      expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
+      // Tokens should be different (different expiration times)
+      expect(result.tokens.accessToken).not.toBe(result.tokens.refreshToken);
     });
   });
 
@@ -149,28 +149,29 @@ describe('AuthService', () => {
         username: 'john_doe',
         password: 'SecurePass123!',
       };
-      const mockResponse = {
-        user: {
-          id: 'user-123',
-          username: 'john_doe',
-          created_at: 1709299445,
-        },
-        tokens: {
-          accessToken: 'access_token_jwt',
-          refreshToken: 'refresh_token_jwt',
-        },
+      const hashedPassword = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWdeS86E36CHczP.'; // bcrypt hash
+      const user = {
+        id: 'user-123',
+        username: 'john_doe',
+        password: hashedPassword,
+        created_at: new Date(),
+        updated_at: new Date(),
       };
-      mockAuthService.login.mockResolvedValue(mockResponse);
+      // Repository: find user by username
+      mockUserRepository.findByUsername.mockResolvedValue(user);
 
       // Act
       const result = await service.login(loginDto);
 
       // Assert
       expect(result).toBeDefined();
+      expect(result.user).toBeDefined();
       expect(result.user.username).toBe('john_doe');
+      expect(result.tokens).toBeDefined();
       expect(result.tokens.accessToken).toBeDefined();
       expect(result.tokens.refreshToken).toBeDefined();
-      expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+      // Verify repository was called to find user
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('john_doe');
     });
 
     it('should throw UnauthorizedException with invalid password', async () => {
@@ -179,15 +180,20 @@ describe('AuthService', () => {
         username: 'john_doe',
         password: 'WrongPassword123!',
       };
-      mockAuthService.login.mockRejectedValue(
-        new UnauthorizedException('Invalid credentials'),
-      );
+      const hashedPassword = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWdeS86E36CHczP.'; // bcrypt hash of "SecurePass123!"
+      const user = {
+        id: 'user-123',
+        username: 'john_doe',
+        password: hashedPassword,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      mockUserRepository.findByUsername.mockResolvedValue(user);
 
       // Act & Assert
-      await expect(service.login(loginDto)).rejects.toThrow(
-        UnauthorizedException,
-      );
-      expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      // Verify repository was called to find user
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('john_doe');
     });
 
     it('should throw UnauthorizedException with non-existent username', async () => {
@@ -196,15 +202,13 @@ describe('AuthService', () => {
         username: 'non_existent',
         password: 'SecurePass123!',
       };
-      mockAuthService.login.mockRejectedValue(
-        new UnauthorizedException('User not found'),
-      );
+      // Repository: user not found
+      mockUserRepository.findByUsername.mockResolvedValue(null);
 
       // Act & Assert
-      await expect(service.login(loginDto)).rejects.toThrow(
-        UnauthorizedException,
-      );
-      expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      // Verify repository was called to find user
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('non_existent');
     });
   });
 
@@ -212,10 +216,6 @@ describe('AuthService', () => {
     it('should refresh access token with valid refresh token', async () => {
       // Arrange
       const userId = 'user-123';
-      const mockResponse = {
-        accessToken: 'new_access_token_jwt',
-      };
-      mockAuthService.refresh.mockResolvedValue(mockResponse);
 
       // Act
       const result = await service.refresh(userId);
@@ -224,21 +224,14 @@ describe('AuthService', () => {
       expect(result).toBeDefined();
       expect(result.accessToken).toBeDefined();
       expect(typeof result.accessToken).toBe('string');
-      expect(mockAuthService.refresh).toHaveBeenCalledWith(userId);
     });
 
     it('should throw UnauthorizedException with invalid refresh token', async () => {
       // Arrange
       const userId = 'invalid-user-id';
-      mockAuthService.refresh.mockRejectedValue(
-        new UnauthorizedException('Invalid or expired refresh token'),
-      );
 
       // Act & Assert
-      await expect(service.refresh(userId)).rejects.toThrow(
-        UnauthorizedException,
-      );
-      expect(mockAuthService.refresh).toHaveBeenCalledWith(userId);
+      await expect(service.refresh(userId)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

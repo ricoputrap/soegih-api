@@ -19,12 +19,14 @@ This skill:
 ## What It Does
 
 **Generates test files** that define the contract for service implementations:
+- ✅ Test the REAL service (not mocked)
+- ✅ Mock DEPENDENCIES only (repository, utilities, external services)
+- ✅ Tests FAIL initially (RED phase) - no implementation yet
 - ✅ Test stubs with Arrange-Act-Assert structure
 - ✅ Happy path tests (main success scenarios)
 - ✅ Error case tests (validation, not found, conflicts)
 - ✅ Edge case tests (boundary conditions, permissions)
-- ✅ All tests will FAIL until services are implemented
-- ✅ Tests mock services/repositories (no DB access)
+- ✅ All tests will PASS when real implementation is added (GREEN phase)
 - ✅ Jest/TypeScript format with proper imports
 
 ## Supported Arguments
@@ -64,15 +66,19 @@ When user invokes with module name (e.g., `auth`):
 
 4. **Generate `.spec.ts` file** with:
    - Proper imports (Test, TestingModule, expect, etc.)
-   - **MOCK service setup using jest.Mock (not real implementation)**
-   - beforeEach creates mock service with jest.fn() for each method
-   - Mock service injected via `useValue: mockService` provider
+   - **Create REAL service (NOT mocked)**
+   - **Mock DEPENDENCIES ONLY** (repository, utilities, external services)
+   - beforeEach setup:
+     - Create mock repository with `jest.fn()` for each method
+     - Create TestingModule with **real service** + mocked dependencies
+     - Inject mocked repository via provider token
    - Describe blocks grouped by operation (create, getAll, getById, update, delete)
    - Each test with Arrange-Act-Assert structure:
-     - **Arrange:** Set up mock return values with `mockService.method.mockResolvedValue()` or `mockRejectedValue()`
-     - **Act:** Call service method
-     - **Assert:** Verify return value AND verify mock was called correctly with `expect(mockService.method).toHaveBeenCalledWith()`
-   - All tests intentionally failing (RED phase) until real implementation added
+     - **Arrange:** Set up mock dependency return values with `.mockResolvedValue()` or `.mockRejectedValue()`
+     - **Act:** Call REAL service method (which calls mocked dependencies)
+     - **Assert:** Verify service behavior AND verify dependencies were called correctly
+   - **All tests FAIL (RED phase)** until real service implementation is added
+   - Tests will PASS when implementation is complete (GREEN phase)
 
 5. **Create file** at appropriate location:
    - `src/auth/auth.service.spec.ts`
@@ -90,27 +96,20 @@ When user invokes with module name (e.g., `auth`):
    - ✅ All tests in RED phase (will fail until implementation)
    - ✅ Ready for `/write-implementation-module {module}`
 
-## Test Structure Example (WITH MOCKS)
+## Test Structure Example (REAL SERVICE + MOCKED DEPENDENCIES)
 
 ```typescript
 describe('CategoriesService', () => {
   let service: CategoriesService;
-  let mockCategoriesService: {
-    create: jest.Mock;
-    getAll: jest.Mock;
-    getById: jest.Mock;
-    update: jest.Mock;
-    deleteSingle: jest.Mock;
-    deleteMultiple: jest.Mock;
-  };
+  let mockCategoryRepository: jest.Mocked<ICategoryRepository>;  // ← Mock dependency
   const userId = 'user-123';
 
   beforeEach(async () => {
-    // Create mock service with jest.fn() for each method
-    mockCategoriesService = {
+    // Create mock REPOSITORY (dependency), not the service
+    mockCategoryRepository = {
       create: jest.fn(),
-      getAll: jest.fn(),
-      getById: jest.fn(),
+      findMany: jest.fn(),
+      findById: jest.fn(),
       update: jest.fn(),
       deleteSingle: jest.fn(),
       deleteMultiple: jest.fn(),
@@ -118,9 +117,10 @@ describe('CategoriesService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        CategoriesService,  // ← Real service (NOT mocked)
         {
-          provide: CategoriesService,
-          useValue: mockCategoriesService,  // ← Mock the service
+          provide: CATEGORIES_REPOSITORY_TOKEN,
+          useValue: mockCategoryRepository,  // ← Mock the dependency
         },
       ],
     }).compile();
@@ -133,53 +133,72 @@ describe('CategoriesService', () => {
       // Arrange
       const createDto: CreateCategoryDto = { name: 'Groceries', type: 'expense' };
       const mockResponse = {
-        data: { id: 'cat-123', name: 'Groceries', type: 'expense', created_at: 1709299445, deleted_at: null },
-        meta: { timestamp: 1709299445, version: '1.0' },
+        id: 'cat-123',
+        name: 'Groceries',
+        type: 'expense',
+        created_at: new Date(),
+        deleted_at: null,
       };
-      mockCategoriesService.create.mockResolvedValue(mockResponse);
+      // Mock repository return value (dependency behavior)
+      mockCategoryRepository.create.mockResolvedValue(mockResponse);
 
-      // Act
+      // Act (call REAL service)
       const result = await service.create(userId, createDto);
 
-      // Assert
-      expect(result.data.id).toBeDefined();
-      expect(result.data.name).toBe('Groceries');
-      expect(mockCategoriesService.create).toHaveBeenCalledWith(userId, createDto);
+      // Assert - verify service behavior
+      expect(result.id).toBe('cat-123');
+      expect(result.name).toBe('Groceries');
+      // Verify repository was called correctly (service integration)
+      expect(mockCategoryRepository.create).toHaveBeenCalledWith(userId, createDto);
     });
 
     it('should throw ConflictException if name+type already exists', async () => {
       // Arrange
       const createDto: CreateCategoryDto = { name: 'Groceries', type: 'expense' };
-      mockCategoriesService.create.mockRejectedValue(
+      // Repository throws error (dependency behavior)
+      mockCategoryRepository.create.mockRejectedValue(
         new ConflictException('Category already exists'),
       );
 
-      // Act & Assert
+      // Act & Assert - service should propagate error
       await expect(service.create(userId, createDto)).rejects.toThrow(
         ConflictException,
       );
-      expect(mockCategoriesService.create).toHaveBeenCalledWith(userId, createDto);
+      // Verify service called repository
+      expect(mockCategoryRepository.create).toHaveBeenCalledWith(userId, createDto);
     });
   });
 });
 ```
 
-## Notes
+## Notes - TDD Best Practices
 
-- **Tests use MOCKED services (not real implementation)** - critical for unit testing
-  - Mock created with `jest.fn()` for each method
-  - Mock injected via `useValue: mockService` in TestingModule
-  - No actual database access
-  - No dependencies on real implementation
-  - Tests verify behavior through mock assertions
+### What to Mock vs What to Keep Real
+- ✅ **Mock DEPENDENCIES:** Repository, utilities, external services, JWT generation, bcrypt
+- ✅ **Keep REAL:** The service being tested (AuthService, CategoriesService, etc.)
+
+### Why?
+- Tests verify real service logic
+- Tests define how service integrates with dependencies
+- Tests FAIL until service is implemented (true TDD RED phase)
+- Tests PASS when implementation is added (true TDD GREEN phase)
+
+### Arrange-Act-Assert Pattern with Real Services
+1. **Arrange:** Mock dependency return values (`.mockResolvedValue()` / `.mockRejectedValue()`)
+2. **Act:** Call REAL service method (which may call mocked dependencies)
+3. **Assert:** Verify service behavior AND verify dependencies were called correctly
+
+### Key Differences from Mocking Service Itself
+| Pattern | Service | Dependencies | Tests Pass? | Is TDD? |
+|---------|---------|--------------|-----------|---------|
+| **Correct (Real + Mocked Deps)** | Real ✅ | Mocked ✅ | ❌ FAIL initially | ✅ TRUE TDD |
+| **Incorrect (Mocked Service)** | Mocked ❌ | Mocked ❌ | ✅ PASS immediately | ❌ NOT TDD |
+
 - Each test is **independent** - order doesn't matter
-- Tests follow **Arrange-Act-Assert** pattern:
-  1. **Arrange:** Set up mock return values with `.mockResolvedValue()` or `.mockRejectedValue()`
-  2. **Act:** Call the service method being tested
-  3. **Assert:** Verify return value AND verify mock was called correctly
 - Test names are **descriptive** - explain what is being tested
-- RED phase: Tests will **fail** - this is correct and expected
-- No need to run tests yet - that's the next step with `/write-implementation-module`
+- **RED phase:** Tests will **FAIL** - this is correct and expected with real services
+- Implementation phase: Add business logic to make tests PASS
+- Service methods should call mocked dependencies to handle the logic
 
 ## Workflow
 
