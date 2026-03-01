@@ -1,11 +1,11 @@
 ---
 name: setup-db
-description: Initialize a completely fresh PostgreSQL database and Prisma setup from scratch for any project
+description: Initialize a fresh PostgreSQL database with Prisma from a design specification - zero to schema in one step
 ---
 
 # Setup DB
 
-Initialize a fresh database and Prisma configuration from scratch for a new project - no schema, no database tables, completely fresh start.
+Initialize a completely fresh PostgreSQL database and Prisma configuration from a design specification - no schema, no tables, completely fresh start.
 
 ## Behavior
 
@@ -35,43 +35,49 @@ This skill:
 ## Supported Arguments
 
 ```
-/setup-db @docs/PHASE3_DESIGN.md
-/setup-db path/to/schema-spec.md
+/setup-db {design-file}
 ```
 
-- **Required**: Path to design document or schema specification file (e.g., `@docs/PHASE3_DESIGN.md`)
-- This file should contain:
-  - All database models and entities to create
-  - Field names, types, and relationships
-  - Indexes and constraints needed
-  - Any enums or custom types
+- **Required**: Path to file containing database design/schema specification
+  - Can be: design document, requirements, ER diagram text, Swagger spec, etc.
+  - Examples: `docs/design.md`, `@docs/PHASE3_DESIGN.md`, `docs/database-spec.yaml`
+
+**This file should contain:**
+- All database models and entities to create
+- Field names, types, and relationships
+- Indexes and constraints needed
+- Any enums or custom types
+- Primary keys and foreign keys
 
 ## Example Usage
 
 ```
+/setup-db docs/design.md
 /setup-db @docs/PHASE3_DESIGN.md
-/setup-db docs/my-database-design.md
-/setup-db @docs/PHASE4_SWAGGER.md
+/setup-db docs/database-spec.yaml
+/setup-db docs/requirements.md
 ```
 
 ## Implementation
 
-When user invokes this skill with a design file path (e.g., `/setup-db @docs/PHASE3_DESIGN.md`):
+When user invokes this skill with a design file path (e.g., `/setup-db docs/design.md`):
 
 1. **Read the design specification file**:
    - Extract all database models, entities, and fields from the document
    - Identify all relationships between models (one-to-many, many-to-many, etc.)
    - Extract indexes, unique constraints, and special field types
    - Identify enums and custom types needed
+   - Note: User's package manager, Node version, Prisma config (no .env modifications)
 
 2. **Create complete Prisma schema**:
    - Create `prisma/schema.prisma` with all models from the design doc
-   - Include proper field types (String, Int, DateTime, etc.)
+   - Include proper field types (String, Int, DateTime, Boolean, etc.)
    - Add all relationships with proper foreign keys
    - Add indexes and constraints as specified
    - Add enums if needed
-   - Ensure `datasource db` points to PostgreSQL
-   - Ensure proper timestamp fields (@default, @updatedAt if applicable)
+   - Ensure `datasource db` points to PostgreSQL (provider = "postgresql")
+   - Ensure proper timestamp fields (@default(now()), @updatedAt if applicable)
+   - Note: Do NOT set `url` in datasource (connection string goes in separate config)
 
 3. **Write the Prisma schema file**:
    - Write complete schema to `prisma/schema.prisma`
@@ -79,34 +85,20 @@ When user invokes this skill with a design file path (e.g., `/setup-db @docs/PHA
    - Ask user to confirm it looks correct
 
 4. **Generate Prisma client**:
-
-   ```bash
-   source ~/.nvm/nvm.sh && nvm use 24
-   pnpm prisma:generate
-   ```
-
+   - Runs appropriate command based on project setup (e.g., `pnpm prisma generate`)
    - Generates client from the schema
    - If error: debug schema syntax issues
 
 5. **Push schema to empty database**:
-
-   ```bash
-   pnpm prisma:push
-   ```
-
+   - Runs `pnpm prisma db push` (or equivalent)
    - Creates all tables from schema
    - Creates indexes and constraints
    - No migration files created (direct schema sync)
-   - If push fails: troubleshoot connection
+   - If push fails: troubleshoot connection or ask user to verify DATABASE_URL
 
 6. **Verify all tables created**:
-
-   ```bash
-   pnpm prisma:studio
-   ```
-
-   - Opens Prisma Studio at localhost:5555
-   - User inspects all tables visually
+   - Opens Prisma Studio (if available): `pnpm prisma studio`
+   - Or: List tables in database to verify structure
    - Verify structure matches schema expectations
    - Check all expected tables are present
 
@@ -116,16 +108,32 @@ When user invokes this skill with a design file path (e.g., `/setup-db @docs/PHA
    - ✅ Prisma client generated
    - ✅ All tables created from schema in empty database
    - ✅ Database connection verified
-   - ✅ Ready for `/write-tests-module` TDD workflow
+   - ✅ Ready for next steps (TDD tests, implementation, etc.)
 
-## Notes
+## Important Notes
 
-- **Completely Fresh**: This skill assumes database is completely empty - all existing tables have been manually deleted before running
-- **DATABASE_URL**: Assumes `.env` file is already set up correctly with DATABASE_URL (do not modify)
-- **PostgreSQL**: Works with Supabase, AWS RDS, local PostgreSQL, Digital Ocean, or any PostgreSQL provider
+- **Completely Fresh Database**: This skill assumes the database is completely empty
+  - All existing tables must be manually deleted before running
+  - User is responsible for cleanup
+  - Skill does NOT delete tables automatically (safety first)
+
+- **Database Connection**: User must have DATABASE_URL configured
+  - In `.env` file (Supabase, AWS RDS, local PostgreSQL, etc.)
+  - Skill does NOT create or modify `.env`
+  - Skill does NOT verify connection until push step
+
+- **PostgreSQL Required**: Works with any PostgreSQL provider
+  - Supabase (recommended for managed service)
+  - AWS RDS, Digital Ocean, local PostgreSQL, etc.
+  - Connection pooler compatible (adjust port/host as needed)
+
 - **No Migrations**: Uses direct schema push (`db push`), not migration files
-- **Prisma Client**: Generated to project's output location (default: `node_modules/.prisma/client/`)
-- **Manual Cleanup**: You must manually delete all existing tables from database before running this skill
+  - Faster for fresh projects
+  - No migration history to track
+
+- **Prisma Configuration**: Assumes `prisma/schema.prisma` and Prisma config exist
+  - For Prisma 7 specifically: No `url` field in datasource
+  - Connection string lives in separate config file or environment variable
 
 ## Troubleshooting
 
@@ -179,8 +187,10 @@ Setup is complete when:
 
 ## What This Skill Does NOT Do
 
-- Does not create application code (only database setup)
-- Does not seed data (that's a separate step after setup)
-- Does not create environment variables (user must set DATABASE_URL)
-- Does not run application tests (that's Phase 5+)
-- Does not deploy to production (that's Phase 7)
+- ❌ Does not create or modify `.env` or environment variables
+- ❌ Does not verify DATABASE_URL before running (user responsibility)
+- ❌ Does not delete existing tables (user must clean manually)
+- ❌ Does not seed data (that's a separate step after setup)
+- ❌ Does not run application tests
+- ❌ Does not deploy to production
+- ❌ Does not create application code (only database setup)

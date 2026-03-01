@@ -1,34 +1,32 @@
 ---
 name: write-implementation-module
-description: Generate complete service, DTO, repository, and controller implementations for a module to pass test suite
+description: Generate complete service, repository, and controller implementations for a NestJS module to pass test suite
 ---
 
 # Write Implementation Module
 
-Implement a complete Soegih API module with DTOs, repositories, services, and controllers to make tests PASS.
+Implement a complete NestJS module with services, repositories, and controllers to make RED phase tests PASS (GREEN phase).
 
 ## Behavior
 
 This skill:
-1. Accepts a module name (auth, categories, wallets, transactions)
-2. Generates all DTOs (request/response) with validation
-3. Creates repository interface and Prisma implementation
-4. Implements service methods with business logic
-5. Implements controller with Swagger decorators
+1. Accepts a module name from your project
+2. Reads existing test file to understand contracts
+3. Implements service methods with business logic
+4. Implements repository with actual data access
+5. Implements controller with HTTP endpoints
 6. Updates module configuration (providers, imports, exports)
 7. All tests transition to GREEN phase (passing)
 
 ## What It Does
 
 **Generates production-ready implementations:**
-- ✅ Request DTOs with class-validator decorators
-- ✅ Response DTOs with @ApiProperty decorators
-- ✅ Repository interface (ORM-agnostic contract)
-- ✅ Prisma repository (actual database access)
-- ✅ Service implementation (business logic)
-- ✅ Controller implementation (HTTP endpoints)
-- ✅ Module configuration with proper DI setup
-- ✅ All tests should PASS after implementation
+- ✅ Service implementation (business logic matching service tests)
+- ✅ Repository implementation (data access matching repository interface)
+- ✅ Controller implementation (HTTP endpoints matching controller tests)
+- ✅ Module configuration with proper dependency injection setup
+- ✅ Error handling and validation
+- ✅ All tests transition from RED to GREEN phase ✅
 
 ## Supported Arguments
 
@@ -36,102 +34,99 @@ This skill:
 /write-implementation-module {module-name}
 ```
 
-**Module names:**
-- `auth` - Authentication (register, login, logout, refresh)
-- `categories` - Categories (CRUD, filters, soft delete)
-- `wallets` - Wallets (CRUD, balance calculation, soft delete)
-- `transactions` - Transactions (income/expense/transfer, atomic)
+- `{module-name}` - Name of the feature module to implement (e.g., `auth`, `users`, `products`)
 
 ## Example Usage
 
 ```
 /write-implementation-module auth
-/write-implementation-module categories
-/write-implementation-module wallets
-/write-implementation-module transactions
+/write-implementation-module users
+/write-implementation-module products
+/write-implementation-module payments
 ```
 
 ## Implementation
 
-When user invokes with module name (e.g., `categories`):
+When user invokes with module name (e.g., `/write-implementation-module auth`):
 
-1. **Validate module name** - Must be one of: auth, categories, wallets, transactions
+1. **Validate module name** - Module directory exists at `src/{module}`
 
-2. **Generate DTOs** from PHASE4_SWAGGER.md:
-   - Create `src/{module}/dto/create-{module}.dto.ts`
-   - Create `src/{module}/dto/update-{module}.dto.ts` (if applicable)
-   - Create `src/{module}/dto/{module}-response.dto.ts`
-   - Add all @ApiProperty, validation decorators (@IsString, @MinLength, etc.)
-   - Handle optional fields (@IsOptional)
-   - Handle conditional validation (@ValidateIf for transfer vs income/expense)
+2. **Read existing test files** to understand contracts:
+   - Read `src/{module}/{module}.service.spec.ts` to understand service interface
+   - Read `src/{module}/{module}.controller.spec.ts` to understand controller interface
+   - Understand mocked dependencies and their expected behavior
+   - Identify what needs to be implemented based on failing tests
 
-3. **Generate Repository Interface**:
-   - Create `src/{module}/repositories/{module}.repository.interface.ts`
-   - Define I{Module}Repository interface with all query/command methods
-   - Define {MODULE}_REPOSITORY_TOKEN symbol for DI
-   - Define input/output types (avoid database-specific types)
-
-4. **Generate Prisma Repository**:
-   - Create `src/{module}/repositories/prisma-{module}.repository.ts`
-   - Implement I{Module}Repository with Prisma queries
-   - Map Prisma errors to NestJS exceptions:
-     - P2002 (unique) → ConflictException (409)
-     - P2025 (not found) → NotFoundException (404)
-   - Transform Prisma rows to domain types
-   - Include all indexes and filters from PHASE3_DESIGN
-
-5. **Generate Service Implementation**:
-   - Create `src/{module}/{module}.service.ts`
-   - Inject repository interface (not PrismaService directly)
-   - Implement all methods from PHASE5_TDD
+3. **Implement Service**:
+   - Update `src/{module}/{module}.service.ts` (from test stub)
+   - Inject repository interface via constructor
+   - Implement each method to make service tests PASS
    - Business logic:
-     - User isolation (WHERE user_id filter)
-     - Validation logic
-     - Soft delete handling
-     - Balance calculation (wallets)
-     - Atomic transactions (transfers)
-   - Error handling with proper exceptions
-   - Logging for important operations
+     - Input validation (using injected repository or custom validation)
+     - Dependency calls (call mocked repository methods)
+     - Error handling (throw appropriate NestJS exceptions)
+     - Data transformation (DTOs, response shaping)
+   - Methods should match service test expectations exactly
 
-6. **Generate Controller Implementation**:
-   - Create `src/{module}/{module}.controller.ts`
-   - Add all @Api* decorators from PHASE4_SWAGGER
-   - Implement all endpoints
-   - Extract parameters (@Body, @Param, @Query, @Req)
-   - Handle authentication (@UseGuards, @CurrentUser)
-   - Call service methods correctly
-   - Return proper response format (data + meta + pagination if list)
+4. **Implement Repository**:
+   - Create `src/{module}/repositories/prisma-{module}.repository.ts`
+   - Implement repository interface from existing interface file
+   - Use Prisma queries for actual data access
+   - Map Prisma errors to NestJS exceptions:
+     - P2002 (unique constraint) → ConflictException (409)
+     - P2025 (not found) → NotFoundException (404)
+     - P2003 (FK constraint) → BadRequestException (400)
+   - Transform Prisma rows to domain types (if needed)
+   - Handle all repository methods from interface
 
-7. **Update Module Configuration**:
+5. **Implement Controller**:
+   - Update `src/{module}/{module}.controller.ts` (from test stub)
+   - Add HTTP decorators (@Get, @Post, @Put, @Delete)
+   - Add Swagger decorators (@ApiOperation, @ApiResponse, etc.)
+   - Extract parameters (@Body, @Param, @Query, @Req, @CurrentUser)
+   - Call service methods with correct parameters
+   - Return responses matching controller test expectations
+   - Handle authentication guards if needed
+
+6. **Update Module Configuration**:
    - Update `src/{module}/{module}.module.ts`
-   - Register service in providers
-   - Register repository token in providers
-   - Add controller to declarations
-   - Add imports if needed (PrismaModule already global)
+   - Register repository implementation as provider:
+     ```typescript
+     {
+       provide: {MODULE}_REPOSITORY_TOKEN,
+       useClass: Prisma{Module}Repository,
+     }
+     ```
+   - Import PrismaModule if needed (usually global in NestJS apps)
+   - Ensure service is in providers
+   - Ensure controller is in controllers
    - Export service if needed by other modules
 
-8. **Create repository test file** (optional):
+7. **Create Repository Tests** (optional, but recommended):
    - Create `src/{module}/repositories/prisma-{module}.repository.spec.ts`
-   - Test Prisma interactions
-   - Test error mapping
-   - Test data transformation
+   - Test Prisma interactions and error handling
+   - Test data transformation (Prisma rows → domain types)
+   - Verify error mapping works correctly
 
-9. **Display generated files** for review
+8. **Display generated files** for review
 
-10. **Output summary:**
-    - ✅ DTOs created: {count}
-    - ✅ Repository interface created
-    - ✅ Repository implementation created
-    - ✅ Service implementation created
-    - ✅ Controller implementation created
-    - ✅ Module configuration updated
-    - ✅ Ready for `/test-module {module}` to verify tests pass
+9. **Output summary:**
+    - ✅ Service implementation updated: `src/{module}/{module}.service.ts`
+    - ✅ Repository implementation created: `src/{module}/repositories/prisma-{module}.repository.ts`
+    - ✅ Controller implementation updated: `src/{module}/{module}.controller.ts`
+    - ✅ Module configuration updated: `src/{module}/{module}.module.ts`
+    - ✅ Ready for `pnpm test -- src/{module}` to verify tests pass ✅
 
-## Implementation Details
+## Implementation Examples
 
-### Service Method Pattern
+### Service Implementation Pattern
 
 ```typescript
+// src/categories/categories.service.ts
+import { Injectable, Inject, ConflictException, NotFoundException } from '@nestjs/common';
+import type { ICategoriesRepository, CATEGORIES_REPOSITORY_TOKEN } from './repositories/categories.repository.interface.js';
+import { CreateCategoryDto, UpdateCategoryDto } from './categories.dto.js';
+
 @Injectable()
 export class CategoriesService {
   constructor(
@@ -139,58 +134,105 @@ export class CategoriesService {
     private readonly repository: ICategoriesRepository,
   ) {}
 
-  async create(userId: string, createDto: CreateCategoryDto): Promise<any> {
-    // 1. Validate business rules
-    // 2. Check for conflicts (unique constraints)
-    // 3. Call repository
-    // 4. Handle errors
-    // 5. Return response DTO
+  async create(userId: string, createDto: CreateCategoryDto) {
+    // Business logic: Call mocked/real repository
+    // Service tests mock repository, so this will use mock return values during testing
+    return await this.repository.create(userId, createDto);
+  }
+
+  async getAll(userId: string, filters?: any) {
+    return await this.repository.findMany(userId, filters);
+  }
+
+  async getById(id: string, userId: string) {
+    const category = await this.repository.findById(id, userId);
+    if (!category) {
+      throw new NotFoundException('Category not found');
+    }
+    return category;
+  }
+
+  async update(id: string, userId: string, updateDto: UpdateCategoryDto) {
+    return await this.repository.update(id, userId, updateDto);
+  }
+
+  async delete(id: string, userId: string) {
+    return await this.repository.deleteSingle(id, userId);
   }
 }
 ```
 
-### Controller Method Pattern
+### Controller Implementation Pattern
 
 ```typescript
+// src/categories/categories.controller.ts
+import { Controller, Post, Get, Put, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiBody, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CategoriesService } from './categories.service.js';
+import { CreateCategoryDto, UpdateCategoryDto, CategoryResponseDto } from './categories.dto.js';
+
 @Controller('categories')
-@UseGuards(JwtGuard)
-@ApiCookieAuth()
+@ApiTags('Categories')
+@UseGuards(JwtAuthGuard)  // Adjust based on your auth strategy
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Post()
-  @ApiOperation({ summary: '...' })
+  @ApiOperation({ summary: 'Create a new category' })
   @ApiBody({ type: CreateCategoryDto })
   @ApiResponse({ status: 201, type: CategoryResponseDto })
-  async create(
-    @Body() createDto: CreateCategoryDto,
-    @CurrentUser() user: CurrentUserDto,
-  ): Promise<CategoryResponseDto> {
-    return this.categoriesService.create(user.id, createDto);
+  async create(@Body() createDto: CreateCategoryDto, @Req() req: any) {
+    return this.categoriesService.create(req.user.id, createDto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all categories' })
+  @ApiResponse({ status: 200, type: [CategoryResponseDto] })
+  async getAll(@Req() req: any) {
+    return this.categoriesService.getAll(req.user.id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get category by ID' })
+  @ApiResponse({ status: 200, type: CategoryResponseDto })
+  async getById(@Param('id') id: string, @Req() req: any) {
+    return this.categoriesService.getById(id, req.user.id);
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: 'Update a category' })
+  @ApiBody({ type: UpdateCategoryDto })
+  @ApiResponse({ status: 200, type: CategoryResponseDto })
+  async update(@Param('id') id: string, @Body() updateDto: UpdateCategoryDto, @Req() req: any) {
+    return this.categoriesService.update(id, req.user.id, updateDto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a category' })
+  @ApiResponse({ status: 204 })
+  async delete(@Param('id') id: string, @Req() req: any) {
+    return this.categoriesService.delete(id, req.user.id);
   }
 }
 ```
 
-### Repository Pattern
+### Repository Implementation Pattern
 
 ```typescript
-export const CATEGORIES_REPOSITORY_TOKEN = Symbol('CATEGORIES_REPOSITORY');
-
-export interface ICategoriesRepository {
-  findMany(userId: string, filters?: any): Promise<Category[]>;
-  findById(userId: string, id: string): Promise<Category | null>;
-  create(userId: string, data: any): Promise<Category>;
-  // ...
-}
+// src/categories/repositories/prisma-categories.repository.ts
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import type { ICategoriesRepository, Category } from './categories.repository.interface.js';
+import type { CreateCategoryDto, UpdateCategoryDto } from '../categories.dto.js';
 
 @Injectable()
 export class PrismaCategoriesRepository implements ICategoriesRepository {
   constructor(private prisma: PrismaService) {}
 
-  async create(userId: string, data: any): Promise<Category> {
+  async create(userId: string, data: CreateCategoryDto): Promise<Category> {
     try {
       return await this.prisma.category.create({
-        data: { user_id: userId, ...data },
+        data: { userId, ...data },
       });
     } catch (error) {
       if (error.code === 'P2002') {
@@ -199,57 +241,129 @@ export class PrismaCategoriesRepository implements ICategoriesRepository {
       throw error;
     }
   }
+
+  async findMany(userId: string, filters?: any): Promise<Category[]> {
+    return await this.prisma.category.findMany({
+      where: { userId, deletedAt: null, ...filters },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findById(id: string, userId: string): Promise<Category | null> {
+    return await this.prisma.category.findFirst({
+      where: { id, userId, deletedAt: null },
+    });
+  }
+
+  async update(id: string, userId: string, data: UpdateCategoryDto): Promise<Category> {
+    const exists = await this.findById(id, userId);
+    if (!exists) {
+      throw new NotFoundException('Category not found');
+    }
+    return await this.prisma.category.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async deleteSingle(id: string, userId: string): Promise<void> {
+    const exists = await this.findById(id, userId);
+    if (!exists) {
+      throw new NotFoundException('Category not found');
+    }
+    await this.prisma.category.update({
+      where: { id },
+      data: { deletedAt: new Date() },  // Soft delete
+    });
+  }
 }
 ```
 
-## Notes
+### Module Configuration Pattern
 
-- **Repository Pattern**: Services depend on interfaces, not Prisma directly
-  - Allows swapping implementations without touching services
-  - Easier testing (mock repositories)
-  - Better separation of concerns
+```typescript
+// src/categories/categories.module.ts
+import { Module } from '@nestjs/common';
+import { CategoriesController } from './categories.controller.js';
+import { CategoriesService } from './categories.service.js';
+import { PrismaCategoriesRepository } from './repositories/prisma-categories.repository.js';
+import { CATEGORIES_REPOSITORY_TOKEN } from './repositories/categories.repository.interface.js';
 
-- **User Isolation**: Every query includes `WHERE user_id = $1`
-  - Critical security requirement
-  - Prevents cross-user data leakage
+@Module({
+  controllers: [CategoriesController],
+  providers: [
+    CategoriesService,
+    {
+      provide: CATEGORIES_REPOSITORY_TOKEN,
+      useClass: PrismaCategoriesRepository,
+    },
+  ],
+  exports: [CategoriesService],  // If other modules need this service
+})
+export class CategoriesModule {}
+```
 
-- **Error Mapping**: Prisma errors → NestJS exceptions
-  - P2002 → ConflictException (409)
-  - P2025 → NotFoundException (404)
-  - P2003 → BadRequestException (400) if FK missing
+## Key Principles
 
-- **DTOs with Validation**: Input validation at API boundary
-  - Use class-validator decorators
-  - DTO validation happens automatically in NestJS
-  - Returns 400 Bad Request if invalid
+### Repository Pattern
+- **Services depend on interfaces, not Prisma directly**
+  - Inject via `@Inject(TOKEN)` with interface type
+  - Repository interface defines ORM-agnostic contract
+  - Prisma implementation handles database details
+  - Easier testing: service tests mock repository
+  - Easier maintenance: swap implementations without touching services
 
-- **Response Format**: Consistent envelope
-  - All responses: `{ data: {...}, meta: {...}, pagination: {...} }`
-  - Pagination only for list endpoints
-  - Meta includes timestamp and version
+### Read Existing Tests to Understand Contracts
+- Service tests tell you:
+  - What methods the service must have
+  - What parameters they accept
+  - What they return or throw
+  - How they interact with mocked dependencies
+- Controller tests tell you:
+  - What HTTP methods and paths
+  - What status codes to return
+  - What service methods to call
+- Repository tests (once written) tell you:
+  - What data access methods are needed
+  - How to handle errors and constraints
+
+### Error Handling
+- Map Prisma errors to NestJS exceptions:
+  - `P2002` (unique constraint) → `ConflictException` (409)
+  - `P2025` (record not found) → `NotFoundException` (404)
+  - `P2003` (foreign key) → `BadRequestException` (400)
+- Service layer should throw NestJS exceptions
+- Controller layer relies on global exception filter
+
+### User Isolation (Security Critical)
+- Every query must filter by user ID
+- Prevents one user from accessing another user's data
+- Example: `WHERE userId = ? AND deletedAt IS NULL`
 
 ## Workflow
 
-This skill is step 3 of the TDD workflow:
+Typical TDD workflow using this skill:
 
 ```
-1. /setup-db                          ← Database setup
-2. /write-tests-module {module}       ← Generate failing tests (RED)
-3. /write-implementation-module {m}   ← Implement to pass tests (GREEN)
-4. /test-module {module}              ← Run and verify tests pass
+1. /setup-db {design-file}                      ← Initialize database
+2. /write-tests-module {module} {reference}     ← RED phase (tests fail)
+3. /write-implementation-module {module}         ← GREEN phase (tests pass)
+4. pnpm test -- src/{module}                    ← Verify all tests pass ✅
 5. Repeat 2-4 for next module
 ```
 
 ## Related Skills
 
-- `/write-tests-module` - Generate test files (RED phase)
-- `/test-module` - Run tests for a module (provided skill)
+- `/write-tests-module` - Generate RED phase test files and contracts
+- `/setup-db` - Initialize database from design spec
+- Use `pnpm test -- src/{module}` to run tests and verify
 
 ## Success Criteria
 
 Implementation is complete when:
-- ✅ All files created (DTOs, repository, service, controller)
-- ✅ Module configuration updated with DI setup
-- ✅ All methods implemented with full business logic
-- ✅ `/test-module {module}` shows all tests passing ✅
+- ✅ Service implementation created/updated with all methods
+- ✅ Repository implementation created with data access logic
+- ✅ Controller implementation created/updated with HTTP endpoints
+- ✅ Module configuration updated (providers, controllers)
+- ✅ Running `pnpm test -- src/{module}` shows all tests passing ✅
 - ✅ Ready to move to next module
