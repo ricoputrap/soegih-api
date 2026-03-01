@@ -2,8 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 
+const cookieParser = require('cookie-parser');
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Enable cookie parsing for JWT extraction from cookies
+  app.use(cookieParser());
 
   const config = new DocumentBuilder()
     .setTitle('Soegih API')
