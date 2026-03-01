@@ -34,12 +34,12 @@
 │ updated_at   │
 └──┬───────────┘
    │
-   ├─────────────────┬──────────────────┬──────────────────┐
-   │                 │                  │                  │
-   ▼                 ▼                  ▼                  ▼
-┌─────────────┐ ┌──────────────┐ ┌───────────────┐ ┌──────────────────┐
+   ├─────────────────┬──────────────────┬
+   │                 │                  │
+   ▼                 ▼                  ▼
+┌─────────────┐ ┌──────────────┐ ┌───────────────┐
 │  Category   │ │    Wallet    │ │TransactionEvent
-│ ├─────────────┤ ├──────────────┤ ├───────────────┤
+├─────────────┤ ├──────────────┤ ├───────────────┤
 │ id (PK)     │ │ id (PK)      │ │ id (PK)       │
 │ user_id (FK)│ │ user_id (FK) │ │ user_id (FK)  │
 │ name        │ │ name (U)     │ │ type          │
@@ -76,8 +76,8 @@ model User {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String   // bcrypt hash
-  created_at Int
-  updated_at Int
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // Relations
   categories        Category[]
@@ -91,6 +91,8 @@ model User {
 - `username` (unique, for login lookup)
 - `created_at` (for sorting/filtering)
 
+**Note:** `created_at` is automatically set on user creation. `updated_at` is automatically updated on any modification. No application logic needed.
+
 ---
 
 #### Category
@@ -102,9 +104,9 @@ model Category {
   name      String
   description String?
   type      CategoryType // "income" | "expense"
-  deleted_at Int?
-  created_at Int
-  updated_at Int
+  deleted_at DateTime?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // Relations
   user      User @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -125,6 +127,8 @@ enum CategoryType {
 - `user_id + name + type` (composite unique)
 - `deleted_at` (for soft delete queries)
 
+**Note:** `created_at` and `updated_at` are managed automatically by Prisma. `deleted_at` is set by application logic during soft delete.
+
 ---
 
 #### Wallet
@@ -136,9 +140,9 @@ model Wallet {
   name      String
   type      WalletType // "cash" | "bank" | "e-wallet" | "other"
   currency  String @default("IDR")
-  deleted_at Int?
-  created_at Int
-  updated_at Int
+  deleted_at DateTime?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // Relations
   user      User @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -161,6 +165,8 @@ enum WalletType {
 - `user_id + name` (composite unique)
 - `deleted_at` (for soft delete queries)
 
+**Note:** `created_at` and `updated_at` are managed automatically by Prisma. `deleted_at` is set by application logic during soft delete.
+
 ---
 
 #### TransactionEvent
@@ -170,13 +176,13 @@ model TransactionEvent {
   id        String   @id @default(cuid())
   user_id   String
   type      TransactionType // "income" | "expense" | "transfer"
-  occurred_at Int
+  occurred_at DateTime
   note      String?
   payee     String?
   category_id String? // null for transfers
-  deleted_at Int?
-  created_at Int
-  updated_at Int
+  deleted_at DateTime?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // Relations
   user      User @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -202,6 +208,8 @@ enum TransactionType {
 - `occurred_at` (for sorting/filtering by date)
 - `deleted_at` (for soft delete queries)
 
+**Note:** `created_at` and `updated_at` are managed automatically by Prisma. `occurred_at` is set by application logic (transaction date, not creation date). `deleted_at` is set during soft delete.
+
 ---
 
 #### Posting
@@ -212,8 +220,8 @@ model Posting {
   event_id  String
   wallet_id String
   amount    Int // positive for debit, negative for credit
-  created_at Int
-  deleted_at Int? // soft delete only
+  created_at DateTime @default(now())
+  deleted_at DateTime? // soft delete only
 
   // Relations
   event     TransactionEvent @relation(fields: [event_id], references: [id], onDelete: Cascade)
@@ -230,6 +238,8 @@ model Posting {
 - `wallet_id` (for balance calculation)
 - `deleted_at` (for soft delete)
 
+**Note:** `created_at` is managed automatically by Prisma. `deleted_at` is set by application logic during soft delete.
+
 ---
 
 ### Data Constraints & Business Rules
@@ -239,6 +249,7 @@ model Posting {
 | User → Category/Wallet/Transaction isolation | `WHERE user_id = $1` in all queries                         | Security: prevent cross-user data leakage  |
 | Category name+type uniqueness per user       | Composite unique index `(user_id, name, type)`              | Allow duplicate names with different types |
 | Wallet name uniqueness per user              | Composite unique index `(user_id, name)`                    | Prevent duplicate wallet names             |
+| Automatic timestamps                         | `@default(now())` for created_at, `@updatedAt` for updated_at | Auto-fill, zero application logic needed   |
 | Transaction type immutability                | Application validation (read-only after insert)             | Business rule: type cannot change          |
 | Transfer posting pairs                       | Application validation (must have 2 with equal/opposite)    | Double-entry bookkeeping                   |
 | Soft delete preservation                     | `deleted_at IS NULL` filter in all queries                  | Keep historical data for audits            |
