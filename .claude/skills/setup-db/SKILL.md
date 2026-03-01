@@ -1,41 +1,40 @@
 ---
 name: setup-db
-description: Initialize and configure PostgreSQL database with Prisma schema, generate client, and push schema to Supabase
+description: Initialize a completely fresh PostgreSQL database and Prisma setup from scratch for any project
 ---
 
 # Setup DB
 
-Initialize and configure the Soegih API database with Prisma schema aligned to PHASE3_DESIGN specifications.
+Initialize a fresh database and Prisma configuration from scratch for a new project - no schema, no database tables, completely fresh start.
 
 ## Behavior
 
 This skill:
-1. Updates Prisma schema with User model and corrects timestamp types (unix epoch)
-2. Adds all database indexes and constraints from PHASE3_DESIGN
-3. Regenerates Prisma client from updated schema
-4. Pushes schema changes to Supabase PostgreSQL database
-5. Verifies database connection and tables created successfully
+
+1. Checks if `prisma/schema.prisma` exists; if not, creates it from project requirements
+2. Generates the Prisma client from the schema
+3. Pushes the schema to the empty database to create all tables
+4. Verifies database connection and all tables created successfully
 
 ## What It Does
 
 **Before:**
-- Prisma schema may be incomplete or have wrong types
-- Database tables may not exist or be out of sync
-- Prisma client may be stale
+
+- No `prisma/schema.prisma` file or incomplete schema
+- No Prisma client generated
+- Database is completely empty (all tables manually deleted)
+- DATABASE_URL already set in `.env` file
 
 **After:**
-- ✅ Complete schema matching PHASE3_DESIGN
-- ✅ Unix epoch timestamps (Int type, not DateTime)
-- ✅ User model with FK relationships
-- ✅ All indexes for performance
-- ✅ Composite unique constraints
-- ✅ Cascade delete relationships
-- ✅ Tables created in Supabase
-- ✅ Prisma client generated and ready
+
+- ✅ Complete Prisma schema created/verified
+- ✅ All tables created from schema in empty database
+- ✅ Prisma client generated and ready to use
+- ✅ Database connection verified
 
 ## Supported Arguments
 
-None - this skill runs with default behavior for the soegih-api project.
+None - this skill uses the project's `prisma/schema.prisma` and `.env`.
 
 ## Example Usage
 
@@ -47,73 +46,116 @@ None - this skill runs with default behavior for the soegih-api project.
 
 When user invokes this skill:
 
-1. **Read current Prisma schema** from `prisma/schema.prisma`
+1. **Verify or create Prisma schema**:
+   - Check if `prisma/schema.prisma` exists
+   - If it exists: validate it's complete and correct
+   - If it doesn't exist: ask user for schema details and create it
+   - Schema should include:
+     - `datasource db` pointing to PostgreSQL
+     - All data models with proper fields, types, relationships
+     - Indexes and constraints needed for the project
+   - Ensure all models are defined (users, roles, entities, etc.)
 
-2. **Update schema** to match PHASE3_DESIGN:
-   - Add User model (id, username unique, password, created_at, updated_at)
-   - Change all timestamps from DateTime to Int (unix epoch)
-   - Add user_id FK to Category, Wallet, TransactionEvent
-   - Add composite unique indexes:
-     - categories: (user_id, name, type)
-     - wallets: (user_id, name)
-   - Add performance indexes:
-     - categories: user_id, deleted_at
-     - wallets: user_id, deleted_at
-     - transactions: user_id, category_id, occurred_at, deleted_at
-     - postings: wallet_id, event_id, deleted_at
-   - Add cascade delete: onDelete: Cascade on all FKs
-   - Fix WalletType enum: e_wallet (not e-wallet)
+2. **Generate Prisma client**:
 
-3. **Write updated schema** to `prisma/schema.prisma`
-
-4. **Regenerate Prisma client:**
    ```bash
    source ~/.nvm/nvm.sh && nvm use 24
    pnpm prisma:generate
    ```
 
-5. **Push schema to database:**
+   - Generates client from the schema
+   - If error: debug schema syntax issues
+
+3. **Push schema to empty database**:
+
    ```bash
    pnpm prisma:push
    ```
-   Note: This connects to Supabase and creates/updates tables without migrations
 
-6. **Verify connection:**
+   - Creates all tables from schema
+   - Creates indexes and constraints
+   - No migration files created (direct schema sync)
+   - If push fails: troubleshoot DATABASE_URL and connection
+
+4. **Verify all tables created**:
+
    ```bash
    pnpm prisma:studio
    ```
-   (Optional - opens Prisma Studio at localhost:5555 to inspect tables)
 
-7. **Display summary:**
-   - ✅ Schema updated to match PHASE3_DESIGN
-   - ✅ Prisma client regenerated
-   - ✅ Tables created in Supabase
-   - ✅ Ready for repository and service implementation
+   - Opens Prisma Studio at localhost:5555
+   - User inspects all tables visually
+   - Verify structure matches schema expectations
+   - Check all expected tables are present
+
+5. **Display summary**:
+   - ✅ Prisma schema created/verified
+   - ✅ Prisma client generated
+   - ✅ All tables created from schema in empty database
+   - ✅ Database connection verified
+   - ✅ Ready for next phase (test generation, service implementation, etc.)
 
 ## Notes
 
-- **IMPORTANT**: Ensure `prisma/.env` or environment variables have `DATABASE_URL` set to Supabase connection string
-- Uses Session Pooler URL (port 5432): `postgresql://user:password@host.pooler.supabase.com:6543/postgres`
-- `prisma:push` requires network access to Supabase (no migrations created, direct schema sync)
-- If push fails, check:
-  - DATABASE_URL is set correctly
-  - Supabase project is active
-  - Port 6543 (session pooler) is accessible
-- Prisma client output: `generated/prisma/` (gitignored, regenerated on install)
-- After setup, can run `/write-tests-module` to start TDD workflow
+- **Completely Fresh**: This skill assumes database is completely empty - all existing tables have been manually deleted before running
+- **DATABASE_URL**: Assumes `.env` file is already set up correctly with DATABASE_URL (do not modify)
+- **PostgreSQL**: Works with Supabase, AWS RDS, local PostgreSQL, Digital Ocean, or any PostgreSQL provider
+- **No Migrations**: Uses direct schema push (`db push`), not migration files
+- **Prisma Client**: Generated to project's output location (default: `node_modules/.prisma/client/`)
+- **Manual Cleanup**: You must manually delete all existing tables from database before running this skill
+
+## Troubleshooting
+
+**Problem**: `Can't connect to database`
+
+- **Solution**:
+  - Verify DATABASE_URL connection string is correct
+  - Ensure database server is running
+  - Check network connectivity and firewall
+  - For cloud databases: verify IP whitelist/security groups
+
+**Problem**: `Prisma schema has errors`
+
+- **Solution**:
+  - Check Prisma schema syntax
+  - Ensure all models are properly defined
+  - Run `pnpm prisma validate` to check schema
+
+**Problem**: `Some tables already exist`
+
+- **Solution**: Delete all existing tables first before pushing new schema
+- Use database admin console to drop tables manually
+
+**Problem**: `push fails with migration conflict`
+
+- **Solution**: This shouldn't happen with fresh database, but if so:
+  - Delete generated Prisma client: `rm -rf node_modules/.prisma/`
+  - Run `pnpm install` to regenerate
+  - Try push again
 
 ## Related Skills
 
 After setup-db completes:
-- `/write-tests-module` - Generate test files for a module
-- `/write-implementation-module` - Implement service code
-- `/run-tests-module` - Run tests for a module (already exists)
+
+- Next: `/write-tests-module` - Generate test files for a feature
+- Or: Follow project's implementation workflow
 
 ## Success Criteria
 
 Setup is complete when:
-- ✅ `prisma/schema.prisma` updated with all models from PHASE3_DESIGN
-- ✅ Timestamps are Int type (unix epoch)
+
+- ✅ `prisma/schema.prisma` exists and is valid
 - ✅ `pnpm prisma:generate` runs without errors
-- ✅ `pnpm prisma:push` succeeds and creates tables
-- ✅ Database tables visible in Supabase dashboard: users, categories, wallets, transaction_events, postings
+- ✅ `pnpm prisma:push` succeeds on empty database
+- ✅ Prisma Studio shows all expected tables with correct structure
+- ✅ No errors in Prisma client generation
+- ✅ Database connection verified and working
+- ✅ Ready for service/repository implementation
+
+## What This Skill Does NOT Do
+
+- Does not create application code (only database setup)
+- Does not seed data (that's a separate step after setup)
+- Does not create environment variables (user must set DATABASE_URL)
+- Does not run application tests (that's Phase 5+)
+- Does not deploy to production (that's Phase 7)
