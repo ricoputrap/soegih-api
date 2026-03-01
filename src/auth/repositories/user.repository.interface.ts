@@ -9,10 +9,7 @@ export interface IUserRepository {
     updated_at: Date;
   } | null>;
 
-  create(data: {
-    username: string;
-    password: string;
-  }): Promise<{
+  create(data: { username: string; password: string }): Promise<{
     id: string;
     username: string;
     created_at: Date;

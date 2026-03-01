@@ -44,6 +44,7 @@ export class PrismaCategoryRepository implements ICategoryRepository {
           name: data.name,
           description: data.description,
           type: data.type as EnumCategoryType,
+          user_id: '', // TODO: Pass userId from service/controller
         },
       });
 

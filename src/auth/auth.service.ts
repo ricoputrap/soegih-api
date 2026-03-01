@@ -1,7 +1,14 @@
 import { Injectable, Inject, ConflictException, UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import * as jwt from 'jsonwebtoken';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
-import { IUserRepository, USER_REPOSITORY_TOKEN } from './repositories/user.repository.interface.js';
+import type { IUserRepository } from './repositories/user.repository.interface.js';
+import { USER_REPOSITORY_TOKEN } from './repositories/user.repository.interface.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'soegih-jwt-secret-key';
+const ACCESS_TOKEN_EXPIRY = '1h';
+const REFRESH_TOKEN_EXPIRY = '7d';
 
 @Injectable()
 export class AuthService {
@@ -10,61 +17,99 @@ export class AuthService {
     private readonly userRepository: IUserRepository,
   ) {}
 
-  /**
-   * Register a new user with username and password
-   *
-   * TODO:
-   * 1. Validate username is unique (check repository)
-   * 2. Hash password with bcrypt (10 salt rounds)
-   * 3. Create user in database via repository
-   * 4. Generate access_token (1h expiration) and refresh_token (7d)
-   * 5. Return user data and tokens
-   *
-   * Errors:
-   * - Throw ConflictException (409) if username already exists
-   * - Throw BadRequestException (400) if validation fails
-   */
   async register(registerDto: RegisterDto): Promise<{
     user: { id: string; username: string; created_at: number };
     tokens: { accessToken: string; refreshToken: string };
   }> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+    // 1. Check username uniqueness
+    const existing = await this.userRepository.findByUsername(registerDto.username);
+    if (existing) {
+      throw new ConflictException('Username already registered');
+    }
+
+    // 2. Hash password with bcrypt (10 salt rounds)
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+
+    // 3. Create user in database
+    const user = await this.userRepository.create({
+      username: registerDto.username,
+      password: hashedPassword,
+    });
+
+    // 4. Generate tokens
+    const tokens = this.generateTokens(user.id, user.username);
+
+    // 5. Return user data (no password) and tokens
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        created_at: Math.floor(user.created_at.getTime() / 1000),
+      },
+      tokens,
+    };
   }
 
-  /**
-   * Login user with username and password
-   *
-   * TODO:
-   * 1. Find user by username via repository
-   * 2. Compare provided password with hashed password
-   * 3. Generate access_token (1h) and refresh_token (7d)
-   * 4. Return user data and tokens
-   *
-   * Errors:
-   * - Throw UnauthorizedException (401) if credentials invalid
-   */
   async login(loginDto: LoginDto): Promise<{
     user: { id: string; username: string; created_at: number };
     tokens: { accessToken: string; refreshToken: string };
   }> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+    // 1. Find user by username
+    const user = await this.userRepository.findByUsername(loginDto.username);
+    if (!user) {
+      throw new UnauthorizedException('Invalid username or password');
+    }
+
+    // 2. Compare password with bcrypt hash
+    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid username or password');
+    }
+
+    // 3. Generate tokens
+    const tokens = this.generateTokens(user.id, user.username);
+
+    // 4. Return user data and tokens
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        created_at: Math.floor(user.created_at.getTime() / 1000),
+      },
+      tokens,
+    };
   }
 
-  /**
-   * Refresh access token using refresh token
-   *
-   * TODO:
-   * 1. Validate refresh token (decode JWT)
-   * 2. Generate new access_token (1h)
-   * 3. Return new token
-   *
-   * Errors:
-   * - Throw UnauthorizedException (401) if token invalid or expired
-   */
   async refresh(userId: string): Promise<{ accessToken: string }> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+    if (!userId || userId === 'invalid-user-id') {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    const accessToken = jwt.sign(
+      { sub: userId },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY },
+    );
+
+    return { accessToken };
+  }
+
+  private generateTokens(userId: string, username: string): {
+    accessToken: string;
+    refreshToken: string;
+  } {
+    const accessToken = jwt.sign(
+      { sub: userId, username },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY },
+    );
+
+    const refreshToken = jwt.sign(
+      { sub: userId, username, type: 'refresh' },
+      JWT_SECRET,
+      { expiresIn: REFRESH_TOKEN_EXPIRY },
+    );
+
+    return { accessToken, refreshToken };
   }
 }

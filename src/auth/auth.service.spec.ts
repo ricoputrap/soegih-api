@@ -3,7 +3,10 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
-import { IUserRepository, USER_REPOSITORY_TOKEN } from './repositories/user.repository.interface.js';
+import {
+  IUserRepository,
+  USER_REPOSITORY_TOKEN,
+} from './repositories/user.repository.interface.js';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -59,7 +62,9 @@ describe('AuthService', () => {
       expect(result.tokens.accessToken).toBeDefined();
       expect(result.tokens.refreshToken).toBeDefined();
       // Verify repository was called to check username uniqueness
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('john_doe');
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith(
+        'john_doe',
+      );
       // Verify repository was called to create user
       expect(mockUserRepository.create).toHaveBeenCalled();
     });
@@ -80,9 +85,13 @@ describe('AuthService', () => {
       });
 
       // Act & Assert
-      await expect(service.register(registerDto)).rejects.toThrow(ConflictException);
+      await expect(service.register(registerDto)).rejects.toThrow(
+        ConflictException,
+      );
       // Verify repository was called to check username
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('existing_user');
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith(
+        'existing_user',
+      );
       // Verify repository.create was NOT called
       expect(mockUserRepository.create).not.toHaveBeenCalled();
     });
@@ -149,7 +158,8 @@ describe('AuthService', () => {
         username: 'john_doe',
         password: 'SecurePass123!',
       };
-      const hashedPassword = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWdeS86E36CHczP.'; // bcrypt hash
+      const hashedPassword =
+        '$2b$10$1Cs3CSnqjdSh28HaPb721.WI2Co9AlEb/KWqWdLEGmgQsmrDwt19i'; // bcrypt hash of "SecurePass123!"
       const user = {
         id: 'user-123',
         username: 'john_doe',
@@ -171,7 +181,9 @@ describe('AuthService', () => {
       expect(result.tokens.accessToken).toBeDefined();
       expect(result.tokens.refreshToken).toBeDefined();
       // Verify repository was called to find user
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('john_doe');
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith(
+        'john_doe',
+      );
     });
 
     it('should throw UnauthorizedException with invalid password', async () => {
@@ -180,7 +192,8 @@ describe('AuthService', () => {
         username: 'john_doe',
         password: 'WrongPassword123!',
       };
-      const hashedPassword = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWdeS86E36CHczP.'; // bcrypt hash of "SecurePass123!"
+      const hashedPassword =
+        '$2b$10$1Cs3CSnqjdSh28HaPb721.WI2Co9AlEb/KWqWdLEGmgQsmrDwt19i'; // bcrypt hash of "SecurePass123!" of "SecurePass123!"
       const user = {
         id: 'user-123',
         username: 'john_doe',
@@ -191,9 +204,13 @@ describe('AuthService', () => {
       mockUserRepository.findByUsername.mockResolvedValue(user);
 
       // Act & Assert
-      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
       // Verify repository was called to find user
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('john_doe');
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith(
+        'john_doe',
+      );
     });
 
     it('should throw UnauthorizedException with non-existent username', async () => {
@@ -206,9 +223,13 @@ describe('AuthService', () => {
       mockUserRepository.findByUsername.mockResolvedValue(null);
 
       // Act & Assert
-      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
       // Verify repository was called to find user
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('non_existent');
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith(
+        'non_existent',
+      );
     });
   });
 
@@ -231,7 +252,9 @@ describe('AuthService', () => {
       const userId = 'invalid-user-id';
 
       // Act & Assert
-      await expect(service.refresh(userId)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh(userId)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });
