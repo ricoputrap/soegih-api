@@ -34,29 +34,51 @@ This skill:
 
 ## Supported Arguments
 
-None - this skill uses the project's `prisma/schema.prisma` and `.env`.
+```
+/setup-db @docs/PHASE3_DESIGN.md
+/setup-db path/to/schema-spec.md
+```
+
+- **Required**: Path to design document or schema specification file (e.g., `@docs/PHASE3_DESIGN.md`)
+- This file should contain:
+  - All database models and entities to create
+  - Field names, types, and relationships
+  - Indexes and constraints needed
+  - Any enums or custom types
 
 ## Example Usage
 
 ```
-/setup-db
+/setup-db @docs/PHASE3_DESIGN.md
+/setup-db docs/my-database-design.md
+/setup-db @docs/PHASE4_SWAGGER.md
 ```
 
 ## Implementation
 
-When user invokes this skill:
+When user invokes this skill with a design file path (e.g., `/setup-db @docs/PHASE3_DESIGN.md`):
 
-1. **Verify or create Prisma schema**:
-   - Check if `prisma/schema.prisma` exists
-   - If it exists: validate it's complete and correct
-   - If it doesn't exist: ask user for schema details and create it
-   - Schema should include:
-     - `datasource db` pointing to PostgreSQL
-     - All data models with proper fields, types, relationships
-     - Indexes and constraints needed for the project
-   - Ensure all models are defined (users, roles, entities, etc.)
+1. **Read the design specification file**:
+   - Extract all database models, entities, and fields from the document
+   - Identify all relationships between models (one-to-many, many-to-many, etc.)
+   - Extract indexes, unique constraints, and special field types
+   - Identify enums and custom types needed
 
-2. **Generate Prisma client**:
+2. **Create complete Prisma schema**:
+   - Create `prisma/schema.prisma` with all models from the design doc
+   - Include proper field types (String, Int, DateTime, etc.)
+   - Add all relationships with proper foreign keys
+   - Add indexes and constraints as specified
+   - Add enums if needed
+   - Ensure `datasource db` points to PostgreSQL
+   - Ensure proper timestamp fields (@default, @updatedAt if applicable)
+
+3. **Write the Prisma schema file**:
+   - Write complete schema to `prisma/schema.prisma`
+   - Display the generated schema for user review
+   - Ask user to confirm it looks correct
+
+4. **Generate Prisma client**:
 
    ```bash
    source ~/.nvm/nvm.sh && nvm use 24
@@ -66,7 +88,7 @@ When user invokes this skill:
    - Generates client from the schema
    - If error: debug schema syntax issues
 
-3. **Push schema to empty database**:
+5. **Push schema to empty database**:
 
    ```bash
    pnpm prisma:push
@@ -75,9 +97,9 @@ When user invokes this skill:
    - Creates all tables from schema
    - Creates indexes and constraints
    - No migration files created (direct schema sync)
-   - If push fails: troubleshoot DATABASE_URL and connection
+   - If push fails: troubleshoot connection
 
-4. **Verify all tables created**:
+6. **Verify all tables created**:
 
    ```bash
    pnpm prisma:studio
@@ -88,12 +110,13 @@ When user invokes this skill:
    - Verify structure matches schema expectations
    - Check all expected tables are present
 
-5. **Display summary**:
-   - ✅ Prisma schema created/verified
+7. **Display summary**:
+   - ✅ Prisma schema created from design document
+   - ✅ Schema written to `prisma/schema.prisma`
    - ✅ Prisma client generated
    - ✅ All tables created from schema in empty database
    - ✅ Database connection verified
-   - ✅ Ready for next phase (test generation, service implementation, etc.)
+   - ✅ Ready for `/write-tests-module` TDD workflow
 
 ## Notes
 
@@ -144,13 +167,15 @@ After setup-db completes:
 
 Setup is complete when:
 
-- ✅ `prisma/schema.prisma` exists and is valid
+- ✅ Design document read and schema extracted
+- ✅ `prisma/schema.prisma` created with all models from design doc
+- ✅ Schema reviewed and confirmed correct by user
 - ✅ `pnpm prisma:generate` runs without errors
 - ✅ `pnpm prisma:push` succeeds on empty database
 - ✅ Prisma Studio shows all expected tables with correct structure
-- ✅ No errors in Prisma client generation
+- ✅ All models, relationships, and indexes match design document
 - ✅ Database connection verified and working
-- ✅ Ready for service/repository implementation
+- ✅ Ready for `/write-tests-module` TDD workflow
 
 ## What This Skill Does NOT Do
 
