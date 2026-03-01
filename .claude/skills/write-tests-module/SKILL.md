@@ -64,11 +64,15 @@ When user invokes with module name (e.g., `auth`):
 
 4. **Generate `.spec.ts` file** with:
    - Proper imports (Test, TestingModule, expect, etc.)
-   - beforeEach/afterEach setup
+   - **MOCK service setup using jest.Mock (not real implementation)**
+   - beforeEach creates mock service with jest.fn() for each method
+   - Mock service injected via `useValue: mockService` provider
    - Describe blocks grouped by operation (create, getAll, getById, update, delete)
-   - Each test with Arrange-Act-Assert structure
-   - Mock service setup (not actual DB calls)
-   - All tests intentionally failing (RED phase)
+   - Each test with Arrange-Act-Assert structure:
+     - **Arrange:** Set up mock return values with `mockService.method.mockResolvedValue()` or `mockRejectedValue()`
+     - **Act:** Call service method
+     - **Assert:** Verify return value AND verify mock was called correctly with `expect(mockService.method).toHaveBeenCalledWith()`
+   - All tests intentionally failing (RED phase) until real implementation added
 
 5. **Create file** at appropriate location:
    - `src/auth/auth.service.spec.ts`
@@ -86,16 +90,39 @@ When user invokes with module name (e.g., `auth`):
    - ✅ All tests in RED phase (will fail until implementation)
    - ✅ Ready for `/write-implementation-module {module}`
 
-## Test Structure Example
+## Test Structure Example (WITH MOCKS)
 
 ```typescript
 describe('CategoriesService', () => {
   let service: CategoriesService;
+  let mockCategoriesService: {
+    create: jest.Mock;
+    getAll: jest.Mock;
+    getById: jest.Mock;
+    update: jest.Mock;
+    deleteSingle: jest.Mock;
+    deleteMultiple: jest.Mock;
+  };
   const userId = 'user-123';
 
   beforeEach(async () => {
+    // Create mock service with jest.fn() for each method
+    mockCategoriesService = {
+      create: jest.fn(),
+      getAll: jest.fn(),
+      getById: jest.fn(),
+      update: jest.fn(),
+      deleteSingle: jest.fn(),
+      deleteMultiple: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CategoriesService],
+      providers: [
+        {
+          provide: CategoriesService,
+          useValue: mockCategoriesService,  // ← Mock the service
+        },
+      ],
     }).compile();
 
     service = module.get<CategoriesService>(CategoriesService);
@@ -104,7 +131,12 @@ describe('CategoriesService', () => {
   describe('create', () => {
     it('should create a category with valid input', async () => {
       // Arrange
-      const createDto: CreateCategoryDto = { ... };
+      const createDto: CreateCategoryDto = { name: 'Groceries', type: 'expense' };
+      const mockResponse = {
+        data: { id: 'cat-123', name: 'Groceries', type: 'expense', created_at: 1709299445, deleted_at: null },
+        meta: { timestamp: 1709299445, version: '1.0' },
+      };
+      mockCategoriesService.create.mockResolvedValue(mockResponse);
 
       // Act
       const result = await service.create(userId, createDto);
@@ -112,11 +144,21 @@ describe('CategoriesService', () => {
       // Assert
       expect(result.data.id).toBeDefined();
       expect(result.data.name).toBe('Groceries');
+      expect(mockCategoriesService.create).toHaveBeenCalledWith(userId, createDto);
     });
 
     it('should throw ConflictException if name+type already exists', async () => {
-      // Arrange, Act, Assert
-      await expect(...).rejects.toThrow(ConflictException);
+      // Arrange
+      const createDto: CreateCategoryDto = { name: 'Groceries', type: 'expense' };
+      mockCategoriesService.create.mockRejectedValue(
+        new ConflictException('Category already exists'),
+      );
+
+      // Act & Assert
+      await expect(service.create(userId, createDto)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockCategoriesService.create).toHaveBeenCalledWith(userId, createDto);
     });
   });
 });
@@ -124,9 +166,17 @@ describe('CategoriesService', () => {
 
 ## Notes
 
-- Tests use **mocks** (not real database) - safe to run without Supabase
+- **Tests use MOCKED services (not real implementation)** - critical for unit testing
+  - Mock created with `jest.fn()` for each method
+  - Mock injected via `useValue: mockService` in TestingModule
+  - No actual database access
+  - No dependencies on real implementation
+  - Tests verify behavior through mock assertions
 - Each test is **independent** - order doesn't matter
-- Tests follow **Arrange-Act-Assert** pattern for clarity
+- Tests follow **Arrange-Act-Assert** pattern:
+  1. **Arrange:** Set up mock return values with `.mockResolvedValue()` or `.mockRejectedValue()`
+  2. **Act:** Call the service method being tested
+  3. **Assert:** Verify return value AND verify mock was called correctly
 - Test names are **descriptive** - explain what is being tested
 - RED phase: Tests will **fail** - this is correct and expected
 - No need to run tests yet - that's the next step with `/write-implementation-module`
