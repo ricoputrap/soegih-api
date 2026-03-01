@@ -9,8 +9,8 @@ datasource db {
 }
 
 enum CategoryType {
-  expense
   income
+  expense
 }
 
 enum WalletType {
@@ -21,54 +21,83 @@ enum WalletType {
 }
 
 enum TransactionType {
-  expense
   income
+  expense
   transfer
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  categories   Category[]
+  wallets      Wallet[]
+  transactions TransactionEvent[]
+
+  @@map("users")
 }
 
 model Category {
   id          String       @id @default(cuid())
+  user_id     String
   name        String
   description String?
   type        CategoryType
+  deleted_at  DateTime?
   created_at  DateTime     @default(now())
   updated_at  DateTime     @updatedAt
-  deleted_at  DateTime?
 
-  events TransactionEvent[]
+  user         User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions TransactionEvent[]
 
-  @@unique([name, type])
+  @@unique([user_id, name, type])
+  @@index([user_id])
+  @@index([deleted_at])
   @@map("categories")
 }
 
 model Wallet {
   id         String     @id @default(cuid())
-  name       String     @unique
+  user_id    String
+  name       String
   type       WalletType
   currency   String     @default("IDR")
+  deleted_at DateTime?
   created_at DateTime   @default(now())
   updated_at DateTime   @updatedAt
-  deleted_at DateTime?
 
+  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   postings Posting[]
 
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@index([deleted_at])
   @@map("wallets")
 }
 
 model TransactionEvent {
   id          String          @id @default(cuid())
-  occurred_at DateTime
+  user_id     String
   type        TransactionType
+  occurred_at DateTime
   note        String?
   payee       String?
   category_id String?
+  deleted_at  DateTime?
   created_at  DateTime        @default(now())
   updated_at  DateTime        @updatedAt
-  deleted_at  DateTime?
 
-  category Category? @relation(fields: [category_id], references: [id])
-  postings Posting[]
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category   Category? @relation(fields: [category_id], references: [id])
+  postings   Posting[]
 
+  @@index([user_id])
+  @@index([category_id])
+  @@index([occurred_at])
+  @@index([deleted_at])
   @@map("transaction_events")
 }
 
@@ -80,8 +109,11 @@ model Posting {
   created_at DateTime @default(now())
   deleted_at DateTime?
 
-  event  TransactionEvent @relation(fields: [event_id], references: [id])
-  wallet Wallet           @relation(fields: [wallet_id], references: [id])
+  event  TransactionEvent @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  wallet Wallet           @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
 
+  @@index([event_id])
+  @@index([wallet_id])
+  @@index([deleted_at])
   @@map("postings")
 }
